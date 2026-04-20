@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:webs/live_chat.dart';
+import 'package:webs/live_chat/live_chat_screen.dart';
 
 class App extends StatefulWidget {
   const App({super.key});
