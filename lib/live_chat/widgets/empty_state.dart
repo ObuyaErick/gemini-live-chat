@@ -3,8 +3,14 @@ import 'package:flutter/material.dart';
 class EmptyState extends StatelessWidget {
   final String agentName;
   final String? subtitle;
+  final List<Widget>? actions;
 
-  const EmptyState({super.key, required this.agentName, this.subtitle});
+  const EmptyState({
+    super.key,
+    required this.agentName,
+    this.subtitle,
+    this.actions,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -34,6 +40,7 @@ class EmptyState extends StatelessWidget {
                 : 'Ask me anything.',
             style: TextStyle(fontSize: 14, color: colorScheme.onSurfaceVariant),
           ),
+          ...?actions,
         ],
       ),
     );
