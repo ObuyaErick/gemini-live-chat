@@ -730,6 +730,18 @@ class _LiveChatState extends State<LiveChat> {
                 _newSession();
                 _scaffoldKey.currentState?.closeDrawer();
               },
+              onEvictAllSessions: () {
+                _provider.evictAllSessions();
+                _newSession();
+                _scaffoldKey.currentState?.closeDrawer();
+              },
+              onEvictSession: (s) {
+                _provider.evictSession(s.sessionId);
+                if (_provider.currentSessionId == s.sessionId) {
+                  _newSession();
+                }
+                _scaffoldKey.currentState?.closeDrawer();
+              },
               isOpen: true,
               onToggle: () => _scaffoldKey.currentState?.closeDrawer(),
             ),
@@ -762,6 +774,18 @@ class _LiveChatState extends State<LiveChat> {
               SessionsSidebar(
                 onSelectSession: _selectSession,
                 onNewSession: _newSession,
+                onEvictSession: (s) {
+                  _provider.evictSession(s.sessionId);
+                  if (_provider.currentSessionId == s.sessionId) {
+                    _newSession();
+                  }
+                  _scaffoldKey.currentState?.closeDrawer();
+                },
+                onEvictAllSessions: () {
+                  _provider.evictAllSessions();
+                  _newSession();
+                  _scaffoldKey.currentState?.closeDrawer();
+                },
                 isOpen: _isSidebarOpen,
                 onToggle: _toggleSidebar,
               ),

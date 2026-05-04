@@ -19,6 +19,7 @@ class EmptyState extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
+        SizedBox(width: double.infinity),
         Icon(
           Icons.bar_chart_rounded,
           size: 48,

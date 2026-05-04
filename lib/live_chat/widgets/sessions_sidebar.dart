@@ -7,6 +7,8 @@ import 'package:webs/live_chat/providers/live_chat_provider.dart';
 class SessionsSidebar extends StatelessWidget {
   final ValueChanged<ChatSession> onSelectSession;
   final VoidCallback onNewSession;
+  final ValueChanged<ChatSession> onEvictSession;
+  final VoidCallback onEvictAllSessions;
   final bool isOpen;
   final VoidCallback onToggle;
 
@@ -14,6 +16,8 @@ class SessionsSidebar extends StatelessWidget {
     super.key,
     required this.onSelectSession,
     required this.onNewSession,
+    required this.onEvictSession,
+    required this.onEvictAllSessions,
     required this.isOpen,
     required this.onToggle,
   });
@@ -70,6 +74,38 @@ class SessionsSidebar extends StatelessWidget {
                       : () {
                           final agentId = provider.currentAgentId;
                           if (agentId != null) provider.loadSessions(agentId);
+                        },
+                ),
+                IconButton(
+                  icon: const Icon(Icons.delete_sweep_rounded, size: 18),
+                  tooltip: 'Clear all sessions',
+                  onPressed: provider.sessions.isEmpty
+                      ? null
+                      : () async {
+                          final ok = await showDialog<bool>(
+                            context: context,
+                            builder: (ctx) => AlertDialog(
+                              title: const Text('Clear all sessions?'),
+                              content: const Text(
+                                'All sessions for this agent will be removed from the cache.',
+                                style: TextStyle(fontSize: 13),
+                              ),
+                              actions: [
+                                TextButton(
+                                  onPressed: () => Navigator.pop(ctx, false),
+                                  child: const Text('Cancel'),
+                                ),
+                                TextButton(
+                                  onPressed: () => Navigator.pop(ctx, true),
+                                  style: TextButton.styleFrom(
+                                    foregroundColor: const Color(0xFFB42318),
+                                  ),
+                                  child: const Text('Clear all'),
+                                ),
+                              ],
+                            ),
+                          );
+                          if (ok == true) onEvictAllSessions();
                         },
                 ),
                 IconButton(
@@ -164,6 +200,7 @@ class SessionsSidebar extends StatelessWidget {
           session: s,
           selected: selected,
           onTap: () => onSelectSession(s),
+          onEvict: () => onEvictSession(s),
         );
       },
     );
@@ -174,11 +211,13 @@ class _SessionTile extends StatelessWidget {
   final ChatSession session;
   final bool selected;
   final VoidCallback onTap;
+  final VoidCallback onEvict;
 
   const _SessionTile({
     required this.session,
     required this.selected,
     required this.onTap,
+    required this.onEvict,
   });
 
   @override
@@ -195,31 +234,78 @@ class _SessionTile extends StatelessWidget {
           borderRadius: BorderRadius.circular(8),
           onTap: onTap,
           child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+            padding: const EdgeInsets.fromLTRB(12, 8, 4, 8),
+            child: Row(
               children: [
-                Text(
-                  session.preview ?? session.sessionId,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontSize: 13,
-                    height: 1.3,
-                    fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
-                    color: const Color(0xFF1F2330),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        session.preview ?? session.sessionId,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 13,
+                          height: 1.3,
+                          fontWeight:
+                              selected ? FontWeight.w600 : FontWeight.w500,
+                          color: const Color(0xFF1F2330),
+                        ),
+                      ),
+                      if (dateStr.isNotEmpty) ...[
+                        const SizedBox(height: 3),
+                        Text(
+                          dateStr,
+                          style: const TextStyle(
+                            fontSize: 11,
+                            color: Color(0xFF747787),
+                          ),
+                        ),
+                      ],
+                    ],
                   ),
                 ),
-                if (dateStr.isNotEmpty) ...[
-                  const SizedBox(height: 4),
-                  Text(
-                    dateStr,
-                    style: const TextStyle(
-                      fontSize: 11,
-                      color: Color(0xFF747787),
-                    ),
-                  ),
-                ],
+                IconButton(
+                  onPressed: () async {
+                    final ok = await showDialog<bool>(
+                      context: context,
+                      builder: (ctx) => AlertDialog(
+                        title: const Text('Delete session?'),
+                        content: Text(
+                          session.preview ?? session.sessionId,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontSize: 13,
+                            color: Color(0xFF747787),
+                          ),
+                        ),
+                        actions: [
+                          TextButton(
+                            onPressed: () => Navigator.pop(ctx, false),
+                            child: const Text('Cancel'),
+                          ),
+                          TextButton(
+                            onPressed: () => Navigator.pop(ctx, true),
+                            style: TextButton.styleFrom(
+                              foregroundColor: const Color(0xFFB42318),
+                            ),
+                            child: const Text('Delete'),
+                          ),
+                        ],
+                      ),
+                    );
+                    if (ok == true) onEvict();
+                  },
+                  icon: const Icon(Icons.delete_outline_rounded),
+                  iconSize: 16,
+                  visualDensity: VisualDensity.compact,
+                  padding: const EdgeInsets.all(6),
+                  constraints: const BoxConstraints(),
+                  color: const Color(0xFFADB5BD),
+                  tooltip: 'Delete session',
+                ),
               ],
             ),
           ),

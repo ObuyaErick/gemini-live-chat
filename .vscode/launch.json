@@ -10,6 +10,8 @@
       "type": "dart",
       "args": [
         "-v",
+        "-d",
+        "chrome",
         "--web-port",
         // "8580",
         "9000",

@@ -74,6 +74,38 @@ class LiveChatProvider extends ChangeNotifier {
 
   void clearCurrentSession() => selectSession(null);
 
+  Future<void> evictSession(String sessionId) async {
+    await http.delete(
+      Uri.parse('${ApiClient.baseUrl}/sessions/$sessionId/evict'),
+      headers: {if (ApiClient.token != null) 'x-winp-token': ApiClient.token!},
+    );
+    _sessions.remove(sessionId);
+    if (_currentSessionId == sessionId) _currentSessionId = null;
+    notifyListeners();
+  }
+
+  Future<void> evictAgentSessions() async {
+    final agentId = _currentAgentId;
+    if (agentId == null) return;
+    await http.delete(
+      Uri.parse('${ApiClient.baseUrl}/agents/$agentId/sessions/evict'),
+      headers: {if (ApiClient.token != null) 'x-winp-token': ApiClient.token!},
+    );
+    _sessions.clear();
+    _currentSessionId = null;
+    notifyListeners();
+  }
+
+  Future<void> evictAllSessions() async {
+    await http.delete(
+      Uri.parse('${ApiClient.baseUrl}/sessions/evict'),
+      headers: {if (ApiClient.token != null) 'x-winp-token': ApiClient.token!},
+    );
+    _sessions.clear();
+    _currentSessionId = null;
+    notifyListeners();
+  }
+
   void registerSessionFromServer(Map<String, dynamic> content) {
     final session = ChatSession.fromJson(content);
     final cachedSession = _sessions[session.sessionId];
