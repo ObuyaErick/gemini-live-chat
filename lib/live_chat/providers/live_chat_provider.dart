@@ -38,7 +38,7 @@ class LiveChatProvider extends ChangeNotifier {
       final url = Uri.parse('${ApiClient.baseUrl}/agents/$agentId/threads');
       final res = await http.get(
         url,
-        headers: {'x-winp-token': ApiClient.token},
+        headers: {if (ApiClient.token != null) 'x-winp-token': ApiClient.token!},
       );
       if (res.statusCode != 200) {
         throw Exception('${res.statusCode} ${res.reasonPhrase ?? ''}');
@@ -58,6 +58,14 @@ class LiveChatProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  void updateCurrentSessionPreview(String preview) {
+    if (_currentSessionId == null) return;
+    final session = _sessions[_currentSessionId!];
+    if (session == null) return;
+    _sessions[_currentSessionId!] = session.copyWith(preview: preview);
+    notifyListeners();
+  }
+
   void selectSession(String? sessionId) {
     if (_currentSessionId == sessionId) return;
     _currentSessionId = sessionId;
@@ -68,7 +76,10 @@ class LiveChatProvider extends ChangeNotifier {
 
   void registerSessionFromServer(Map<String, dynamic> content) {
     final session = ChatSession.fromJson(content);
-    _sessions[session.sessionId] = session;
+    final cachedSession = _sessions[session.sessionId];
+    if (cachedSession == null) {
+      _sessions[session.sessionId] = session.copyWith(preview: "NEW");
+    }
     _currentSessionId = session.sessionId;
     notifyListeners();
   }

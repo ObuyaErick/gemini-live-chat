@@ -20,6 +20,10 @@ dependencies:
   freezed_annotation: ^3.1.0
   json_annotation: ^4.11.0
   intl: ^0.20.2
+  webview_flutter: ^4.10.0
+  webview_flutter_web: ^0.2.3
+  crypto: ^3.0.6
+  shared_preferences: ^2.3.5
 
 dev_dependencies:
   flutter_test:

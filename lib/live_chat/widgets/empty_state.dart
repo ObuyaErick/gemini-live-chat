@@ -15,34 +15,33 @@ class EmptyState extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    return Center(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(
-            Icons.bar_chart_rounded,
-            size: 48,
-            color: colorScheme.outlineVariant,
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        Icon(
+          Icons.bar_chart_rounded,
+          size: 48,
+          color: colorScheme.outlineVariant,
+        ),
+        const SizedBox(height: 12),
+        Text(
+          agentName,
+          style: TextStyle(
+            fontSize: 18,
+            fontWeight: FontWeight.w600,
+            color: colorScheme.onSurface,
           ),
-          const SizedBox(height: 12),
-          Text(
-            agentName,
-            style: TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.w600,
-              color: colorScheme.onSurface,
-            ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            subtitle?.trim().isNotEmpty == true
-                ? subtitle!.trim()
-                : 'Ask me anything.',
-            style: TextStyle(fontSize: 14, color: colorScheme.onSurfaceVariant),
-          ),
-          ...?actions,
-        ],
-      ),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          subtitle?.trim().isNotEmpty == true
+              ? subtitle!.trim()
+              : 'Ask me anything.',
+          style: TextStyle(fontSize: 14, color: colorScheme.onSurfaceVariant),
+        ),
+        ...?actions,
+      ],
     );
   }
 }

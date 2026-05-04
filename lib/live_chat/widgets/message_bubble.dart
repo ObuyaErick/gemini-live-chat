@@ -2,8 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:webs/live_chat/models.dart';
+import 'package:webs/live_chat/widgets/attachments_view.dart';
 import 'package:webs/live_chat/widgets/avatar.dart';
 import 'package:webs/live_chat/widgets/cursor_blink.dart';
+import 'package:webs/ui/core/horizontal_layout_breakpoints.dart';
 
 class MessageBubble extends StatelessWidget {
   final ChatMessage message;
@@ -41,7 +43,10 @@ class MessageBubble extends StatelessWidget {
         alignment: Alignment.centerRight,
         child: ConstrainedBox(
           constraints: BoxConstraints(
-            maxWidth: MediaQuery.of(context).size.width * 0.65,
+            maxWidth: MediaQuery.of(context).size.width *
+                (MediaQuery.of(context).size.width < HorizontalBreakpoints().sm
+                    ? 0.85
+                    : 0.65),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.end,
@@ -280,6 +285,8 @@ class MessageBubble extends StatelessWidget {
                               color: textColor.withValues(alpha: 0.55),
                             ),
                           ),
+                        if (message.attachments.isNotEmpty)
+                          AttachmentsView(attachments: message.attachments),
                       ],
                     ),
                   ),

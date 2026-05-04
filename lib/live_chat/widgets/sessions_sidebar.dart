@@ -18,20 +18,20 @@ class SessionsSidebar extends StatelessWidget {
     required this.onToggle,
   });
 
-  static const double _openWidth = 280;
+  static const double openWidth = 320;
 
   @override
   Widget build(BuildContext context) {
     return AnimatedContainer(
       duration: const Duration(milliseconds: 200),
       curve: Curves.easeOut,
-      width: isOpen ? _openWidth : 0,
+      width: isOpen ? openWidth : 0,
       child: ClipRect(
         child: OverflowBox(
           alignment: Alignment.centerLeft,
           minWidth: 0,
-          maxWidth: _openWidth,
-          child: SizedBox(width: _openWidth, child: _buildContent(context)),
+          maxWidth: openWidth,
+          child: SizedBox(width: openWidth, child: _buildContent(context)),
         ),
       ),
     );

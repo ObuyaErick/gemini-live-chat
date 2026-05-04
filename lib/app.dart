@@ -1,6 +1,8 @@
 // ignore_for_file: unused_element, unused_import
 
 import 'package:flutter/material.dart';
+import 'package:webs/api/api_client.dart';
+import 'package:webs/auth/auth_screen.dart';
 import 'package:webs/lab/table_demo_screen.dart';
 import 'package:webs/live_chat/live_chat_screen.dart';
 import 'package:webs/live_chat/models.dart';
@@ -35,7 +37,9 @@ class _AppState extends State<App> {
       title: 'Flutter Demo',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(colorScheme: .fromSeed(seedColor: Colors.deepPurple)),
-      home: const LiveChat(chatContext: _demoChatContext),
+      home: ApiClient.token?.isNotEmpty == true
+          ? const LiveChat(chatContext: _demoChatContext)
+          : const AuthScreen(),
       // home: TableDemoScreen(),
     );
   }

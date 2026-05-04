@@ -11,6 +11,7 @@ class ChatMessage {
   final DateTime createdAt;
   final Uint8List? imageBytes;
   final String? imageMimeType;
+  List<Attachment> attachments;
 
   ChatMessage({
     required this.role,
@@ -19,7 +20,36 @@ class ChatMessage {
     DateTime? createdAt,
     this.imageBytes,
     this.imageMimeType,
+    this.attachments = const [],
   }) : createdAt = createdAt ?? DateTime.now();
+}
+
+class Attachment {
+  final String fileId;
+  final String filename;
+  final String mimeType;
+  final String url;
+  final int? sizeBytes;
+
+  const Attachment({
+    required this.fileId,
+    required this.filename,
+    required this.mimeType,
+    required this.url,
+    this.sizeBytes,
+  });
+
+  factory Attachment.fromJson(Map<String, dynamic> json) {
+    return Attachment(
+      fileId: (json['file_id'] as String?) ?? '',
+      filename: (json['filename'] as String?) ?? 'attachment',
+      mimeType: (json['mime_type'] as String?) ?? 'application/octet-stream',
+      url: (json['url'] as String?) ?? '',
+      sizeBytes: (json['size_bytes'] as num?)?.toInt(),
+    );
+  }
+
+  bool get isPlotlyJson => mimeType == 'application/json';
 }
 
 class ToolEvent {
@@ -84,6 +114,28 @@ class ChatSession {
     this.createdAt,
     this.preview,
   });
+
+  ChatSession copyWith({
+    String? sessionId,
+    String? agentId,
+    String? account,
+    String? email,
+    String? modelId,
+    String? status,
+    DateTime? createdAt,
+    String? preview,
+  }) {
+    return ChatSession(
+      sessionId: sessionId ?? this.sessionId,
+      agentId: agentId ?? this.agentId,
+      account: account ?? this.account,
+      email: email ?? this.email,
+      modelId: modelId ?? this.modelId,
+      status: status ?? this.status,
+      createdAt: createdAt ?? this.createdAt,
+      preview: preview ?? this.preview,
+    );
+  }
 
   factory ChatSession.fromJson(Map<String, dynamic> json) {
     final messages = (json['messages'] as List?) ?? const [];

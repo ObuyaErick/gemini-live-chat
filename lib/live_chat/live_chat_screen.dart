@@ -13,10 +13,12 @@ import 'package:webs/live_chat/widgets/date_pill.dart';
 import 'package:webs/live_chat/widgets/empty_state.dart';
 import 'package:webs/live_chat/widgets/error_banner.dart';
 import 'package:webs/live_chat/widgets/input_bar.dart';
+import 'package:webs/live_chat/widgets/live_chat_appbar.dart';
 import 'package:webs/live_chat/widgets/message_bubble.dart';
 import 'package:webs/live_chat/widgets/sessions_sidebar.dart';
 import 'package:webs/live_chat/widgets/tool_call_chip.dart';
 import 'package:webs/models/agent_models.dart';
+import 'package:webs/ui/core/horizontal_layout_breakpoints.dart';
 
 class LiveChat extends StatefulWidget {
   final ChatContext? chatContext;
@@ -41,6 +43,7 @@ class _LiveChatState extends State<LiveChat> {
   Agent? _selectedAgent;
   late String _agentId;
   bool _isSidebarOpen = true;
+  final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
 
   List<SuggestedQuestion> get suggestedQuestions =>
       _selectedAgent?.suggestedQuestions ?? [];
@@ -78,15 +81,15 @@ class _LiveChatState extends State<LiveChat> {
     super.dispose();
   }
 
-  String _defaultPromptFor(Agent? agent) {
-    if (agent == null) return '';
-    if (agent.suggestedQuestions.isNotEmpty) {
-      final sorted = [...agent.suggestedQuestions]
-        ..sort((a, b) => a.displayOrder.compareTo(b.displayOrder));
-      return sorted.first.questionText;
-    }
-    return agent.agentWelcomeMessage ?? '';
-  }
+  // String _defaultPromptFor(Agent? agent) {
+  //   if (agent == null) return '';
+  //   if (agent.suggestedQuestions.isNotEmpty) {
+  //     final sorted = [...agent.suggestedQuestions]
+  //       ..sort((a, b) => a.displayOrder.compareTo(b.displayOrder));
+  //     return sorted.first.questionText;
+  //   }
+  //   return agent.agentWelcomeMessage ?? '';
+  // }
 
   String _shortAgentName(Agent? agent) {
     final name = agent?.agentName.trim();
@@ -107,7 +110,7 @@ class _LiveChatState extends State<LiveChat> {
       _pendingAction = null;
       _isWaitingForResponse = false;
       _connectionError = null;
-      _inputController.text = _defaultPromptFor(agent);
+      _inputController.text = '';
     });
     _provider.clearCurrentSession();
     _provider.loadSessions(agent.agentId);
@@ -165,7 +168,7 @@ class _LiveChatState extends State<LiveChat> {
     try {
       final params = {
         'session_id': ?_provider.currentSessionId,
-        'token': ApiClient.token,
+        'token': ?ApiClient.token,
       };
       _channel = WebSocketChannel.connect(
         Uri.parse(
@@ -223,6 +226,14 @@ class _LiveChatState extends State<LiveChat> {
 
   String _formatTodayPill(DateTime dt) => 'TODAY, ${_formatTime(dt)}';
 
+  List<Attachment> _parseAttachments(dynamic raw) {
+    if (raw is! List) return const [];
+    return raw
+        .whereType<Map>()
+        .map((m) => Attachment.fromJson(m.cast<String, dynamic>()))
+        .toList();
+  }
+
   // ------------------------------------------------------------------
   // WebSocket event handlers
   // ------------------------------------------------------------------
@@ -237,7 +248,10 @@ class _LiveChatState extends State<LiveChat> {
 
     final type = payload['type'] as String?;
 
-    print("Payload: $payload");
+    if (type == 'final' && _messages.length <= 2) {
+      final userMessage = _messages.first.content;
+      _provider.updateCurrentSessionPreview(userMessage);
+    }
 
     switch (type) {
       case 'session':
@@ -268,6 +282,7 @@ class _LiveChatState extends State<LiveChat> {
                       : MessageRole.assistant,
                   content: (e['text'] as String?) ?? '',
                   status: MessageStatus.complete,
+                  attachments: _parseAttachments(e['attachments']),
                 );
               }),
             );
@@ -361,9 +376,13 @@ class _LiveChatState extends State<LiveChat> {
         _scrollToBottom();
 
       case 'final':
+        final attachments = _parseAttachments(payload['attachments']);
         setState(() {
           if (_streamingMessage != null) {
             _streamingMessage!.status = MessageStatus.complete;
+            if (attachments.isNotEmpty) {
+              _streamingMessage!.attachments = attachments;
+            }
             _streamingMessage = null;
           } else {
             final content = payload['content'] as String? ?? '';
@@ -373,6 +392,7 @@ class _LiveChatState extends State<LiveChat> {
                   role: MessageRole.assistant,
                   content: content,
                   status: MessageStatus.complete,
+                  attachments: attachments,
                 ),
               );
             }
@@ -566,295 +586,189 @@ class _LiveChatState extends State<LiveChat> {
     final agentSubtitle = _selectedAgent?.agentSubtitle;
     final now = DateTime.now();
 
-    return ChangeNotifierProvider<LiveChatProvider>.value(
-      value: _provider,
-      child: Scaffold(
-        backgroundColor: const Color(0xFFF6F7FB),
-        appBar: _LiveChatAppBar(
-          isConnected: _isConnected,
-          agents: _agents,
-          selectedAgent: _selectedAgent,
-          onSelectAgent: _switchAgent,
-          onToggleConnection: _isConnected ? _disconnect : _connect,
-          isSidebarOpen: _isSidebarOpen,
-          onToggleSidebar: _toggleSidebar,
-        ),
-        body: Row(
-          children: [
-            SessionsSidebar(
-              onSelectSession: _selectSession,
-              onNewSession: _newSession,
-              isOpen: _isSidebarOpen,
-              onToggle: _toggleSidebar,
-            ),
-            Expanded(
-              child: Column(
-                children: [
-                  if (_connectionError != null)
-                    ErrorBanner(message: _connectionError!, onRetry: _connect),
-                  Expanded(
-                    child: Stack(
-                      children: [
-                        _messages.isEmpty
-                            ? EmptyState(
-                                agentName: agentName,
-                                subtitle: agentSubtitle,
-                                actions: [
-                                  Padding(
-                                    padding: const EdgeInsets.all(24.0),
-                                    child: Wrap(
-                                      spacing: 12,
-                                      runSpacing: 12,
-                                      children: [
-                                        ...suggestedQuestions.map(
-                                          (q) => Container(
-                                            padding: EdgeInsets.symmetric(
-                                              horizontal: 12,
-                                              vertical: 8,
-                                            ),
-                                            decoration: BoxDecoration(
-                                              border: Border.all(
-                                                color: Theme.of(context)
-                                                    .colorScheme
-                                                    .outline
-                                                    .withValues(alpha: 0.6),
-                                              ),
-                                            ),
-                                            child: Row(
-                                              spacing: 8,
-                                              mainAxisSize: MainAxisSize.min,
-                                              children: [
-                                                Text(
-                                                  q.questionText,
-                                                  style: TextStyle(
-                                                    fontSize: 13,
-                                                    fontWeight: FontWeight.w600,
-                                                  ),
-                                                ),
-
-                                                IconButton(
-                                                  constraints: BoxConstraints(),
-                                                  padding: EdgeInsets.all(4),
-                                                  onPressed: () {
-                                                    copyToClipboard(
-                                                      q.questionText,
-                                                    );
-                                                  },
-                                                  icon: Icon(
-                                                    Icons.copy_rounded,
-                                                    size: 18,
-                                                  ),
-                                                ),
-
-                                                IconButton(
-                                                  constraints: BoxConstraints(),
-                                                  padding: EdgeInsets.all(4),
-                                                  onPressed: () {
-                                                    _inputController.text =
-                                                        q.questionText;
-                                                    _sendMessage();
-                                                  },
-                                                  icon: Icon(
-                                                    Icons
-                                                        .keyboard_double_arrow_right_rounded,
-                                                    size: 18,
-                                                  ),
-                                                ),
-                                              ],
-                                            ),
-                                          ),
-                                        ),
-                                      ],
+    Expanded makeChatArea() => Expanded(
+      child: Column(
+        children: [
+          if (_connectionError != null)
+            ErrorBanner(message: _connectionError!, onRetry: _connect),
+          Expanded(
+            child: Stack(
+              children: [
+                _messages.isEmpty
+                    ? SingleChildScrollView(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 48,
+                        ),
+                        child: EmptyState(
+                          agentName: agentName,
+                          subtitle: agentSubtitle,
+                          actions: [
+                            ...suggestedQuestions.expand(
+                              (q) => [
+                                SizedBox(height: 10),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 12,
+                                    vertical: 8,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    border: Border.all(
+                                      color: Theme.of(context)
+                                          .colorScheme
+                                          .outline
+                                          .withValues(alpha: 0.6),
                                     ),
                                   ),
-                                ],
-                              )
-                            : ListView.builder(
-                                controller: _scrollController,
-                                padding: const EdgeInsets.fromLTRB(
-                                  24,
-                                  56,
-                                  24,
-                                  24,
+                                  child: Row(
+                                    spacing: 8,
+
+                                    children: [
+                                      Expanded(
+                                        child: Text(
+                                          q.questionText,
+                                          softWrap: true,
+                                          maxLines: 5,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: const TextStyle(
+                                            fontSize: 13,
+                                            fontWeight: FontWeight.w600,
+                                          ),
+                                        ),
+                                      ),
+                                      IconButton(
+                                        constraints: const BoxConstraints(),
+                                        padding: const EdgeInsets.all(4),
+                                        onPressed: () =>
+                                            copyToClipboard(q.questionText),
+                                        icon: const Icon(
+                                          Icons.copy_rounded,
+                                          size: 18,
+                                        ),
+                                      ),
+                                      IconButton(
+                                        constraints: const BoxConstraints(),
+                                        padding: const EdgeInsets.all(4),
+                                        onPressed: () {
+                                          _inputController.text =
+                                              q.questionText;
+                                          _sendMessage();
+                                        },
+                                        icon: const Icon(
+                                          Icons
+                                              .keyboard_double_arrow_right_rounded,
+                                          size: 18,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
                                 ),
-                                itemCount: _messages.length,
-                                itemBuilder: (context, i) => MessageBubble(
-                                  message: _messages[i],
-                                  agentName: agentName,
-                                  formatTime: _formatTime,
-                                ),
-                              ),
-                        Align(
-                          alignment: Alignment.topCenter,
-                          child: Padding(
-                            padding: const EdgeInsets.only(top: 12),
-                            child: DatePill(text: _formatTodayPill(now)),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  if (_activeToolEvents.isNotEmpty)
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(24, 8, 24, 0),
-                      child: ToolCallChip(events: _activeToolEvents),
-                    ),
-                  if (_pendingAction != null)
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(24, 8, 24, 0),
-                      child: ActionConfirmationCard(
-                        action: _pendingAction!,
-                        onConfirm: _confirmAction,
-                        onCancel: _cancelAction,
-                      ),
-                    ),
-                  InputBar(
-                    controller: _inputController,
-                    enabled: _isConnected && !_isWaitingForResponse,
-                    isWaiting: _isWaitingForResponse,
-                    agentShortName: agentShortName,
-                    onSend: _sendMessage,
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _LiveChatAppBar extends StatelessWidget implements PreferredSizeWidget {
-  final bool isConnected;
-  final List<Agent> agents;
-  final Agent? selectedAgent;
-  final ValueChanged<Agent> onSelectAgent;
-  final VoidCallback onToggleConnection;
-  final bool isSidebarOpen;
-  final VoidCallback onToggleSidebar;
-
-  const _LiveChatAppBar({
-    required this.isConnected,
-    required this.agents,
-    required this.selectedAgent,
-    required this.onSelectAgent,
-    required this.onToggleConnection,
-    required this.isSidebarOpen,
-    required this.onToggleSidebar,
-  });
-
-  @override
-  Size get preferredSize => const Size.fromHeight(73);
-
-  @override
-  Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-    return AppBar(
-      toolbarHeight: 72,
-      backgroundColor: Colors.white,
-      surfaceTintColor: Colors.white,
-      elevation: 0,
-      titleSpacing: 4,
-      leading: IconButton(
-        icon: Icon(
-          isSidebarOpen ? Icons.menu_open_rounded : Icons.menu_rounded,
-        ),
-        tooltip: isSidebarOpen ? 'Hide sessions' : 'Show sessions',
-        onPressed: onToggleSidebar,
-      ),
-      title: Row(
-        children: [
-          Container(
-            width: 10,
-            height: 10,
-            decoration: const BoxDecoration(
-              shape: BoxShape.circle,
-              color: Color(0xFFFFD6C9),
-            ),
-          ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                DropdownButtonHideUnderline(
-                  child: DropdownButton<Agent>(
-                    value: selectedAgent,
-                    isExpanded: true,
-                    icon: const Icon(Icons.keyboard_arrow_down_rounded),
-                    onChanged: (a) {
-                      if (a == null) return;
-                      onSelectAgent(a);
-                    },
-                    items: agents
-                        .map(
-                          (a) => DropdownMenuItem<Agent>(
-                            value: a,
-                            child: Text(
-                              a.agentName,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.w600,
-                              ),
+                              ],
                             ),
-                          ),
-                        )
-                        .toList(),
+                          ],
+                        ),
+                      )
+                    : ListView.builder(
+                        controller: _scrollController,
+                        padding: const EdgeInsets.fromLTRB(24, 56, 24, 24),
+                        itemCount: _messages.length,
+                        itemBuilder: (context, i) => MessageBubble(
+                          message: _messages[i],
+                          agentName: agentName,
+                          formatTime: _formatTime,
+                        ),
+                      ),
+                Align(
+                  alignment: Alignment.topCenter,
+                  child: Padding(
+                    padding: const EdgeInsets.only(top: 12),
+                    child: DatePill(text: _formatTodayPill(now)),
                   ),
-                ),
-                const SizedBox(height: 2),
-                Row(
-                  spacing: 16,
-                  children: [
-                    Text(
-                      isConnected
-                          ? 'STATUS: CONNECTED'
-                          : 'STATUS: DISCONNECTED',
-                      style: TextStyle(
-                        fontSize: 11,
-                        letterSpacing: 0.6,
-                        color: colorScheme.onSurfaceVariant.withValues(
-                          alpha: 0.85,
-                        ),
-                      ),
-                    ),
-
-                    Expanded(
-                      child: Consumer<LiveChatProvider>(
-                        builder: (context, chatProvider, child) => Text(
-                          chatProvider.currentSessionId ?? "",
-                          style: TextStyle(
-                            fontSize: 11,
-                            letterSpacing: 0.6,
-                            color: colorScheme.onSurfaceVariant.withValues(
-                              alpha: 0.85,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
                 ),
               ],
             ),
           ),
+          if (_activeToolEvents.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(24, 8, 24, 0),
+              child: ToolCallChip(events: _activeToolEvents),
+            ),
+          if (_pendingAction != null)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(24, 8, 24, 0),
+              child: ActionConfirmationCard(
+                action: _pendingAction!,
+                onConfirm: _confirmAction,
+                onCancel: _cancelAction,
+              ),
+            ),
+          InputBar(
+            controller: _inputController,
+            enabled: _isConnected && !_isWaitingForResponse,
+            isWaiting: _isWaitingForResponse,
+            agentShortName: agentShortName,
+            onSend: _sendMessage,
+          ),
         ],
       ),
-      actions: [
-        IconButton(
-          icon: Icon(isConnected ? Icons.link : Icons.link_off),
-          tooltip: isConnected ? 'Connected' : 'Disconnected',
-          onPressed: onToggleConnection,
+    );
+
+    return ChangeNotifierProvider<LiveChatProvider>.value(
+      value: _provider,
+      child: HorizontalLayoutBreakpoints(
+        all: (context, _) => Scaffold(
+          key: _scaffoldKey,
+          backgroundColor: const Color(0xFFF6F7FB),
+          drawer: Drawer(
+            width: SessionsSidebar.openWidth,
+            child: SessionsSidebar(
+              onSelectSession: (s) {
+                _selectSession(s);
+                _scaffoldKey.currentState?.closeDrawer();
+              },
+              onNewSession: () {
+                _newSession();
+                _scaffoldKey.currentState?.closeDrawer();
+              },
+              isOpen: true,
+              onToggle: () => _scaffoldKey.currentState?.closeDrawer(),
+            ),
+          ),
+          appBar: LiveChatAppBar(
+            isConnected: _isConnected,
+            agents: _agents,
+            selectedAgent: _selectedAgent,
+            onSelectAgent: _switchAgent,
+            onToggleConnection: _isConnected ? _disconnect : _connect,
+            isSidebarOpen: false,
+            onToggleSidebar: () => _scaffoldKey.currentState?.openDrawer(),
+          ),
+          body: Row(children: [makeChatArea()]),
         ),
-        const SizedBox(width: 12),
-      ],
-      bottom: PreferredSize(
-        preferredSize: const Size.fromHeight(1),
-        child: Container(height: 1, color: const Color(0xFFE9EAF0)),
+        md: (context, _) => Scaffold(
+          key: _scaffoldKey,
+          backgroundColor: const Color(0xFFF6F7FB),
+          appBar: LiveChatAppBar(
+            isConnected: _isConnected,
+            agents: _agents,
+            selectedAgent: _selectedAgent,
+            onSelectAgent: _switchAgent,
+            onToggleConnection: _isConnected ? _disconnect : _connect,
+            isSidebarOpen: _isSidebarOpen,
+            onToggleSidebar: _toggleSidebar,
+          ),
+          body: Row(
+            children: [
+              SessionsSidebar(
+                onSelectSession: _selectSession,
+                onNewSession: _newSession,
+                isOpen: _isSidebarOpen,
+                onToggle: _toggleSidebar,
+              ),
+              makeChatArea(),
+            ],
+          ),
+        ),
       ),
     );
   }
