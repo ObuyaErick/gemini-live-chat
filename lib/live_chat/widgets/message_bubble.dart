@@ -39,6 +39,64 @@ class MessageBubble extends StatelessWidget {
       );
     }
 
+    // Live-mode transcript messages — compact caption style, no bubble chrome.
+    if (message.isTranscript) {
+      if (isUser) {
+        return Align(
+          alignment: Alignment.centerRight,
+          child: Container(
+            margin: const EdgeInsets.symmetric(vertical: 2, horizontal: 4),
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+            decoration: BoxDecoration(
+              color: const Color(0xFFE8EDF8),
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: const Color(0xFFBDCCF0)),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.mic_rounded, size: 12, color: Colors.blue.shade400),
+                const SizedBox(width: 5),
+                Flexible(
+                  child: Text(
+                    message.content,
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: Colors.blue.shade800,
+                      fontStyle: FontStyle.italic,
+                      height: 1.4,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      } else {
+        return Padding(
+          padding: const EdgeInsets.symmetric(vertical: 2, horizontal: 4),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              Icon(Icons.volume_up_rounded, size: 13, color: Colors.blue.shade300),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  message.content,
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: colorScheme.onSurfaceVariant.withValues(alpha: 0.75),
+                    fontStyle: FontStyle.italic,
+                    height: 1.4,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+      }
+    }
+
     if (isUser) {
       final hasLocalFiles = message.localAttachments.isNotEmpty;
       final hasHistoryFiles = message.attachments.isNotEmpty;

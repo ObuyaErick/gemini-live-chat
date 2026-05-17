@@ -10,6 +10,8 @@ class InputBar extends StatelessWidget {
   final VoidCallback onAttach;
   final List<LocalFileAttachment> stagedFiles;
   final ValueChanged<LocalFileAttachment> onRemoveStagedFile;
+  final bool isInLiveMode;
+  final VoidCallback? onToggleLiveMode;
 
   const InputBar({
     super.key,
@@ -21,6 +23,8 @@ class InputBar extends StatelessWidget {
     required this.onAttach,
     this.stagedFiles = const [],
     required this.onRemoveStagedFile,
+    this.isInLiveMode = false,
+    this.onToggleLiveMode,
   });
 
   String _formatSize(int bytes) {
@@ -83,6 +87,23 @@ class InputBar extends StatelessWidget {
                           : colorScheme.onSurfaceVariant.withValues(alpha: 0.3),
                     ),
                     tooltip: 'Attach file',
+                  ),
+                  const SizedBox(width: 4),
+                  IconButton(
+                    constraints: const BoxConstraints(),
+                    padding: EdgeInsets.zero,
+                    onPressed: (enabled || isInLiveMode) ? onToggleLiveMode : null,
+                    icon: Icon(
+                      isInLiveMode
+                          ? Icons.stop_circle_rounded
+                          : Icons.mic_rounded,
+                      color: isInLiveMode
+                          ? Colors.red.shade400
+                          : (enabled
+                              ? colorScheme.onSurfaceVariant.withValues(alpha: 0.7)
+                              : colorScheme.onSurfaceVariant.withValues(alpha: 0.3)),
+                    ),
+                    tooltip: isInLiveMode ? 'End voice mode' : 'Enter voice mode',
                   ),
                   const SizedBox(width: 10),
                   Expanded(

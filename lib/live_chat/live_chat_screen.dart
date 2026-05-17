@@ -61,6 +61,9 @@ class _LiveChatState extends State<LiveChat> {
   // Files staged by the user via the attach button, sent with the next message.
   final List<LocalFileAttachment> _stagedFiles = [];
 
+  // Whether the connection is currently in live (voice) mode.
+  bool _isInLiveMode = false;
+
   static const _allowedMimeTypes = {
     'text/csv',
     'text/plain',
@@ -131,6 +134,7 @@ class _LiveChatState extends State<LiveChat> {
       _streamingMessage = null;
       _pendingAction = null;
       _isWaitingForResponse = false;
+      _isInLiveMode = false;
       _connectionError = null;
       _inputController.text = '';
     });
@@ -150,6 +154,7 @@ class _LiveChatState extends State<LiveChat> {
       _streamingMessage = null;
       _pendingAction = null;
       _isWaitingForResponse = false;
+      _isInLiveMode = false;
       _connectionError = null;
     });
     _provider.selectSession(session.sessionId);
@@ -165,6 +170,7 @@ class _LiveChatState extends State<LiveChat> {
       _streamingMessage = null;
       _pendingAction = null;
       _isWaitingForResponse = false;
+      _isInLiveMode = false;
       _connectionError = null;
     });
     _provider.clearCurrentSession();
@@ -235,6 +241,7 @@ class _LiveChatState extends State<LiveChat> {
     setState(() {
       _isConnected = false;
       _isWaitingForResponse = false;
+      _isInLiveMode = false;
       _streamingMessage = null;
       _pendingAction = null;
       _activeToolEvents.clear();
@@ -468,6 +475,55 @@ class _LiveChatState extends State<LiveChat> {
           );
         }
 
+      case 'mode_changed':
+        final modeContent =
+            (payload['content'] as Map?)?.cast<String, dynamic>() ?? {};
+        final mode = modeContent['mode'] as String?;
+        setState(() {
+          _isInLiveMode = mode == 'live';
+          if (mode == 'standard') _isWaitingForResponse = false;
+        });
+
+      case 'audio_output':
+        // Base64 PCM audio from the model (format in payload['mime_type']).
+        // Playback requires a native audio package; wire payload['content']
+        // into an AudioPlayer when one is available.
+        break;
+
+      case 'output_transcript':
+        final text = payload['content'] as String? ?? '';
+        if (text.isEmpty) return;
+        setState(() {
+          _messages.add(
+            ChatMessage(
+              role: MessageRole.assistant,
+              content: text,
+              status: MessageStatus.complete,
+              isTranscript: true,
+            ),
+          );
+        });
+        _scrollToBottom();
+
+      case 'input_transcript':
+        final text = payload['content'] as String? ?? '';
+        if (text.isEmpty) return;
+        setState(() {
+          _messages.add(
+            ChatMessage(
+              role: MessageRole.user,
+              content: text,
+              isTranscript: true,
+            ),
+          );
+        });
+        _scrollToBottom();
+
+      case 'turn_complete':
+        // Model finished its live-mode speech turn. No state change needed —
+        // live mode is continuous until the user sends end_live.
+        break;
+
       case 'error':
         final errMsg = payload['content'] as String? ?? 'Unknown error';
         setState(() {
@@ -476,6 +532,7 @@ class _LiveChatState extends State<LiveChat> {
           _activeToolEvents.clear();
           _pendingAction = null;
           _isWaitingForResponse = false;
+          _isInLiveMode = false;
           _messages.add(
             ChatMessage(
               role: MessageRole.assistant,
@@ -492,6 +549,7 @@ class _LiveChatState extends State<LiveChat> {
     setState(() {
       _isConnected = false;
       _isWaitingForResponse = false;
+      _isInLiveMode = false;
       _connectionError = 'WebSocket error: $error';
       _streamingMessage = null;
       _activeToolEvents.clear();
@@ -502,6 +560,7 @@ class _LiveChatState extends State<LiveChat> {
     setState(() {
       _isConnected = false;
       _isWaitingForResponse = false;
+      _isInLiveMode = false;
       _streamingMessage = null;
       _activeToolEvents.clear();
     });
@@ -592,6 +651,22 @@ class _LiveChatState extends State<LiveChat> {
         );
       });
     }
+  }
+
+  void _startLiveMode() {
+    final channel = _channel;
+    if (channel == null || !_isConnected || _isInLiveMode || _isWaitingForResponse) return;
+    try {
+      channel.sink.add(jsonEncode({'type': 'start_live'}));
+    } catch (_) {}
+  }
+
+  void _endLiveMode() {
+    final channel = _channel;
+    if (channel == null || !_isConnected || !_isInLiveMode) return;
+    try {
+      channel.sink.add(jsonEncode({'end_live': true}));
+    } catch (_) {}
   }
 
   Future<void> _pickFile() async {
@@ -806,6 +881,10 @@ class _LiveChatState extends State<LiveChat> {
             onAttach: _pickFile,
             stagedFiles: _stagedFiles,
             onRemoveStagedFile: _removeStagedFile,
+            isInLiveMode: _isInLiveMode,
+            onToggleLiveMode: _isConnected
+                ? (_isInLiveMode ? _endLiveMode : _startLiveMode)
+                : null,
           ),
         ],
       ),

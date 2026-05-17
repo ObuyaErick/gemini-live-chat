@@ -29,6 +29,7 @@ class ChatMessage {
   final String? imageMimeType;
   List<Attachment> attachments;
   final List<LocalFileAttachment> localAttachments;
+  final bool isTranscript;
 
   ChatMessage({
     required this.role,
@@ -39,6 +40,7 @@ class ChatMessage {
     this.imageMimeType,
     this.attachments = const [],
     this.localAttachments = const [],
+    this.isTranscript = false,
   }) : createdAt = createdAt ?? DateTime.now();
 }
 
