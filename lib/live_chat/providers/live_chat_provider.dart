@@ -48,7 +48,7 @@ class LiveChatProvider extends ChangeNotifier {
       _sessions.clear();
       for (final m in list) {
         final session = ChatSession.fromJson(m.cast<String, dynamic>());
-        _sessions[session.sessionId] = session;
+        if (session.isStandard) _sessions[session.sessionId] = session;
       }
       _loadingSessions = false;
     } catch (e) {
@@ -108,6 +108,7 @@ class LiveChatProvider extends ChangeNotifier {
 
   void registerSessionFromServer(Map<String, dynamic> content) {
     final session = ChatSession.fromJson(content);
+    if (!session.isStandard) return;
     final cachedSession = _sessions[session.sessionId];
     if (cachedSession == null) {
       _sessions[session.sessionId] = session.copyWith(preview: "NEW");

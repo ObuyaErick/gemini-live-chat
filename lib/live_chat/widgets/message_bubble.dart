@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_markdown/flutter_markdown.dart';
+import 'package:flutter_markdown/flutter_markdown.dart'; // MarkdownStyleSheet passed into ChartMessageContent
 import 'package:webs/live_chat/models.dart';
 import 'package:webs/live_chat/widgets/attachments_view.dart';
 import 'package:webs/live_chat/widgets/avatar.dart';
+import 'package:webs/live_chat/widgets/chart_message_content.dart';
 import 'package:webs/live_chat/widgets/cursor_blink.dart';
 import 'package:webs/ui/core/horizontal_layout_breakpoints.dart';
 
@@ -39,11 +40,15 @@ class MessageBubble extends StatelessWidget {
     }
 
     if (isUser) {
+      final hasLocalFiles = message.localAttachments.isNotEmpty;
+      final hasHistoryFiles = message.attachments.isNotEmpty;
+
       return Align(
         alignment: Alignment.centerRight,
         child: ConstrainedBox(
           constraints: BoxConstraints(
-            maxWidth: MediaQuery.of(context).size.width *
+            maxWidth:
+                MediaQuery.of(context).size.width *
                 (MediaQuery.of(context).size.width < HorizontalBreakpoints().sm
                     ? 0.85
                     : 0.65),
@@ -51,6 +56,26 @@ class MessageBubble extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
+              // Locally-staged files (just sent, no URL yet)
+              if (hasLocalFiles)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 4),
+                  child: Wrap(
+                    alignment: WrapAlignment.end,
+                    spacing: 6,
+                    runSpacing: 4,
+                    children: [
+                      for (final f in message.localAttachments)
+                        _FileChip(filename: f.filename, mimeType: f.mimeType),
+                    ],
+                  ),
+                ),
+              // Historical attachments with URLs (from session resume)
+              if (hasHistoryFiles)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 4),
+                  child: AttachmentsView(attachments: message.attachments),
+                ),
               GestureDetector(
                 onLongPress: copyToClipboard,
                 child: Container(
@@ -94,7 +119,9 @@ class MessageBubble extends StatelessWidget {
                       '${formatTime(message.createdAt)} • Delivered',
                       style: TextStyle(
                         fontSize: 11,
-                        color: colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
+                        color: colorScheme.onSurfaceVariant.withValues(
+                          alpha: 0.7,
+                        ),
                       ),
                     ),
                   ),
@@ -219,8 +246,9 @@ class MessageBubble extends StatelessWidget {
                         if (message.content.isNotEmpty) ...[
                           if (message.imageBytes != null)
                             const SizedBox(height: 10),
-                          MarkdownBody(
-                            data: message.content,
+                          ChartMessageContent(
+                            content: message.content,
+                            attachments: message.attachments,
                             styleSheet: MarkdownStyleSheet(
                               p: const TextStyle(
                                 fontSize: 14,
@@ -246,7 +274,9 @@ class MessageBubble extends StatelessWidget {
                                   ),
                                 ),
                               ),
-                              blockquotePadding: const EdgeInsets.only(left: 12),
+                              blockquotePadding: const EdgeInsets.only(
+                                left: 12,
+                              ),
                               h1: const TextStyle(
                                 fontSize: 18,
                                 fontWeight: FontWeight.w700,
@@ -285,8 +315,6 @@ class MessageBubble extends StatelessWidget {
                               color: textColor.withValues(alpha: 0.55),
                             ),
                           ),
-                        if (message.attachments.isNotEmpty)
-                          AttachmentsView(attachments: message.attachments),
                       ],
                     ),
                   ),
@@ -306,6 +334,43 @@ class MessageBubble extends StatelessWidget {
                     ),
                   ),
               ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _FileChip extends StatelessWidget {
+  final String filename;
+  final String mimeType;
+
+  const _FileChip({required this.filename, required this.mimeType});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: const Color(0xFFE8EAF0),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(
+            Icons.attach_file_rounded,
+            size: 14,
+            color: Color(0xFF747787),
+          ),
+          const SizedBox(width: 6),
+          Text(
+            filename,
+            style: const TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w500,
+              color: Color(0xFF1F2330),
             ),
           ),
         ],

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:webs/live_chat/models.dart';
 
 class InputBar extends StatelessWidget {
   final TextEditingController controller;
@@ -6,6 +7,9 @@ class InputBar extends StatelessWidget {
   final bool isWaiting;
   final String agentShortName;
   final VoidCallback onSend;
+  final VoidCallback onAttach;
+  final List<LocalFileAttachment> stagedFiles;
+  final ValueChanged<LocalFileAttachment> onRemoveStagedFile;
 
   const InputBar({
     super.key,
@@ -14,7 +18,16 @@ class InputBar extends StatelessWidget {
     required this.isWaiting,
     required this.agentShortName,
     required this.onSend,
+    required this.onAttach,
+    this.stagedFiles = const [],
+    required this.onRemoveStagedFile,
   });
+
+  String _formatSize(int bytes) {
+    if (bytes < 1024) return '$bytes B';
+    if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(1)} KB';
+    return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -27,6 +40,30 @@ class InputBar extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
+            if (stagedFiles.isNotEmpty) ...[
+              Wrap(
+                spacing: 8,
+                runSpacing: 6,
+                children: [
+                  for (final f in stagedFiles)
+                    Chip(
+                      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      visualDensity: VisualDensity.compact,
+                      avatar: const Icon(
+                        Icons.attach_file_rounded,
+                        size: 14,
+                      ),
+                      label: Text(
+                        '${f.filename}  •  ${_formatSize(f.sizeBytes)}',
+                        style: const TextStyle(fontSize: 12),
+                      ),
+                      deleteIcon: const Icon(Icons.close_rounded, size: 14),
+                      onDeleted: enabled ? () => onRemoveStagedFile(f) : null,
+                    ),
+                ],
+              ),
+              const SizedBox(height: 8),
+            ],
             Container(
               decoration: BoxDecoration(
                 color: const Color(0xFFEDEEF2),
@@ -35,9 +72,17 @@ class InputBar extends StatelessWidget {
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
               child: Row(
                 children: [
-                  Icon(
-                    Icons.add_circle_outline_rounded,
-                    color: colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
+                  IconButton(
+                    constraints: const BoxConstraints(),
+                    padding: EdgeInsets.zero,
+                    onPressed: enabled ? onAttach : null,
+                    icon: Icon(
+                      Icons.add_circle_outline_rounded,
+                      color: enabled
+                          ? colorScheme.onSurfaceVariant.withValues(alpha: 0.7)
+                          : colorScheme.onSurfaceVariant.withValues(alpha: 0.3),
+                    ),
+                    tooltip: 'Attach file',
                   ),
                   const SizedBox(width: 10),
                   Expanded(

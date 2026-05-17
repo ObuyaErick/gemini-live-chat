@@ -2,7 +2,7 @@
 
 ## Overview
 
-The bi-with-ai-chat service provides WebSocket endpoints and supporting REST APIs to integrate generative AI conversational agents into frontend administrative interfaces. It powers three distinct surfaces: ephemeral, inquiry-focused "Data Crew" agents (`/chat/{agent_id}`), the persistent, state-aware "Concierge" panel (`/chat/concierge`) which survives reconnects and can execute user-confirmed administrative actions, and real-time voice agents (`/live/{agent_id}`) that stream bidirectional PCM audio via the Gemini Live API. The standard `/chat/` endpoint uses a strictly typed, bidirectional JSON messaging contract covering streaming responses, historical audit replays, tool executions, frontend routing, module context injection, and interactive chart delivery. The `/live/` endpoint uses a separate binary+JSON protocol designed for low-latency audio.
+The bi-with-ai-chat service provides WebSocket endpoints and supporting REST APIs to integrate generative AI conversational agents into frontend administrative interfaces. It powers three distinct surfaces: ephemeral, inquiry-focused "Data Crew" agents (`/chat/{agent_id}`), the persistent, state-aware "Concierge" panel (`/chat/concierge`) which survives reconnects and can execute user-confirmed administrative actions, and real-time voice conversations that can be entered at any point via the same `/chat/{agent_id}` connection using a `start_live` message. The `/chat/` endpoint uses a strictly typed, bidirectional JSON messaging contract covering streaming responses, historical audit replays, tool executions, frontend routing, module context injection, interactive chart delivery, and live audio events.
 
 ---
 
@@ -12,8 +12,8 @@ The bi-with-ai-chat service provides WebSocket endpoints and supporting REST API
 ┌─────────────────────────┐        ┌─────────────────────────┐
 │  Admin Frontend         │◀──────▶│  bi-with-ai-chat (this) │
 │  - Data Crew chat page  │  WS/   │  - /chat/{agent_id}     │
-│  - Concierge side panel │  HTTP  │  - /live/{agent_id}     │
-│  - Voice interface      │        │  - /agents, /threads    │
+│  - Concierge side panel │  HTTP  │  - /agents, /threads    │
+│  - Voice interface      │        │                         │
 └─────────────────────────┘        └──────────┬──────────────┘
                                               │ google-genai
                                               │ BigQuery (audit, tools, config)
@@ -21,20 +21,20 @@ The bi-with-ai-chat service provides WebSocket endpoints and supporting REST API
                                               ▼
                                     ┌──────────────────────────────┐
                                     │  Gemini (Vertex AI)          │
-                                    │  - standard models (/chat/)  │
-                                    │  - Live API (/live/)         │
+                                    │  - standard models (text)    │
+                                    │  - Live API (voice/audio)    │
                                     └──────────────────────────────┘
 ```
 
-The service exposes two WebSocket endpoints with different protocols:
+There is a single user-facing WebSocket endpoint. Live (voice) mode is entered inline on the same connection:
 
-| Surface   | URL                                            | Protocol  | Lifetime                                                                                        |
-| --------- | ---------------------------------------------- | --------- | ----------------------------------------------------------------------------------------------- |
-| Data Crew | `/chat/{agent_id}?token=...[&session_id=...]`  | JSON      | Per-tab; session released on disconnect unless the client reconnects with the same `session_id` |
-| Concierge | `/chat/concierge?token=...[&session_id=...]`   | JSON      | Long-lived across reconnects **when the client passes the same `session_id` back**              |
-| Live      | `/live/{agent_id}?token=...[&session_id=...]`  | Binary+JSON | Always released on disconnect; prior transcripts seeded into new session on resume            |
+| Surface        | URL                                            | Protocol | Lifetime                                                                                        |
+| -------------- | ---------------------------------------------- | -------- | ----------------------------------------------------------------------------------------------- |
+| Data Crew      | `/chat/{agent_id}?token=...[&session_id=...]`  | JSON     | Per-tab; session released on disconnect unless the client reconnects with the same `session_id` |
+| Concierge      | `/chat/concierge?token=...[&session_id=...]`   | JSON     | Long-lived across reconnects **when the client passes the same `session_id` back**              |
+| Live (voice)   | same `/chat/{agent_id}` connection             | JSON     | Entered via `{"type":"start_live"}`; exited via `{"end_live":true}`. Same session throughout.   |
 
-Data Crew and Concierge speak the **same JSON protocol** on `/chat/`. The server branches on the reserved `agent_id = "concierge"` to (a) keep the session cached across disconnects and (b) accept module `context` frames. Section 5 describes the shared `/chat/` protocol; Section 6 covers the Concierge-only behaviour. Section 9 covers the Live endpoint's distinct protocol.
+All surfaces speak the **same JSON protocol** on `/chat/`. The server branches on `agent_id = "concierge"` to (a) keep the session cached across disconnects and (b) accept module `context` frames. Section 5 describes the full `/chat/` protocol (text and live events); Section 6 covers the Concierge-only behaviour; Section 9 covers live mode switching.
 
 ---
 
@@ -42,8 +42,7 @@ Data Crew and Concierge speak the **same JSON protocol** on `/chat/`. The server
 
 All user-facing endpoints read the bearer token from the `token` query parameter.
 
-- **WebSocket (`/chat/`)**: `wss://host/chat/bob_the_kpi_guy?token=<winp-token>`
-- **WebSocket (`/live/`)**: `wss://host/live/bob_the_kpi_guy?token=<winp-token>`
+- **WebSocket**: `wss://host/chat/bob_the_kpi_guy?token=<winp-token>`
 - **HTTP**: send the token in the `x-winp-token` header instead.
 
 The token is resolved against the Winp auth service to produce `{account, project, email}`. In `ENV=local` mode, the service bypasses the auth call and returns the values from `LOCAL_ACCOUNT` / `LOCAL_PROJECT` / `LOCAL_EMAIL` — useful for local development, never enabled in production.
@@ -257,9 +256,9 @@ Static file serving for chart output when `FILE_STORAGE_BACKEND=local`. The moun
 
 ## 4. Connecting the WebSocket
 
-Every connection is bound to a single `session_id` for its lifetime. The rules differ slightly between the standard (`/chat/`) and live (`/live/`) endpoints.
+Every connection is bound to a single `session_id` for its lifetime. Live (voice) mode is entered and exited within the same connection — the session_id never changes.
 
-### `/chat/` — Data Crew and Concierge
+### `/chat/` — Data Crew, Concierge, and Live mode
 
 - **New conversation**: omit `session_id`. The server allocates a fresh UUID, creates the in-memory chat, and emits a [`session`](#51-outbound--server--client) frame carrying the id. **Capture it** — you'll need it for reconnects, and it's the key for `GET /threads/{session_id}`. The `bi_with_ai_chat_session` row is only written once you send your first user/context message, so connect-and-close without activity leaves no audit trail behind.
 - **Resume a prior conversation**: pass `session_id=<uuid>` as a query param. The server rehydrates the conversation from BigQuery (user + model text turns) and emits both a `session` frame (echoing the id you sent) and a `history` frame. If the `session_id` is malformed, missing, or belongs to a different user/agent, the socket is closed with code **1008**.
@@ -292,20 +291,19 @@ const ws = new WebSocket(
 - The session lives in the in-memory cache across WebSocket reconnects **for as long as the client keeps passing its `session_id` back** and the backend stays up within the 4-hour idle TTL. After a backend restart (or past that TTL), rehydration from BigQuery is automatic on the next connect with the same `session_id`.
 - Right after `accept()` the server emits a [`session`](#51-outbound--server--client) frame; a [`history`](#62-history-replay-on-reconnect) frame follows if the conversation had any visible turns.
 
-### `/live/` — Voice agents
+### Live mode switching
+
+Live (voice) mode is entered and exited on the same `/chat/` connection by sending control messages. No second connection is needed; the same `session_id` is used throughout.
 
 ```js
-const ws = new WebSocket(`wss://${HOST}/live/${agentId}?token=${token}`);
-// …or, to resume (prior transcript seeded into Gemini context):
-const ws = new WebSocket(
-  `wss://${HOST}/live/${agentId}?token=${token}&session_id=${sessionId}`,
-);
+// Enter live mode — server confirms with mode_changed
+ws.send(JSON.stringify({ type: "start_live" }));
+
+// Exit live mode — server confirms with mode_changed
+ws.send(JSON.stringify({ end_live: true }));
 ```
 
-- Uses the **Gemini Live API** — a separate low-latency audio streaming model (`gemini-live-2.5-flash-native-audio`). The protocol is completely different from `/chat/`; see [Section 9](#9-live-api-multimodal-voice).
-- Sessions created on `/live/` cannot be resumed on `/chat/` and vice versa. Passing the wrong type of `session_id` closes the socket with **1008**.
-- Sessions are **always released on disconnect** — there is no in-memory cache across reconnects. On resume, prior transcript turns are silently seeded into the new Gemini Live context; **no `history` frame is emitted**.
-- The server emits a `session` frame immediately after `accept()` with `"input_mode": "live"`.
+See [Section 9](#9-live-mode-voice) for the full protocol.
 
 ---
 
@@ -315,19 +313,24 @@ All frames are JSON. Every outbound frame has `type` and `content`. Every inboun
 
 ### 5.1. Outbound — server → client
 
-| `type`                | When                                           | `content` shape / siblings                                                                        |
-| --------------------- | ---------------------------------------------- | ------------------------------------------------------------------------------------------------- |
-| `session`             | Exactly once, right after `accept()`           | `{ "session_id": "<uuid>", "agent_id": "<id>" }`                                                  |
-| `history`             | Sent once on connect if a prior session exists | `{ "agent_id": "<id>", "data": [{"role": "user"\|"model", "text": "…", "attachments"?: [...]}] }` |
-| `context_ack`         | After the server accepts a `context` message   | The stored context, or `null`                                                                     |
-| `delta`               | Incremental streamed text from the model       | `"<chunk>"` (plain string)                                                                        |
-| `image`               | Inline image from a code-execution tool        | `{ "mime_type": "image/png", "data": "<base64>" }`                                                |
-| `tool_call`           | Model invoked a function                       | `{ "name": "<fn>", "args": { … } }`                                                               |
-| `tool_result`         | A function returned (summarised)               | `{ "name": "<fn>", "result": { … } }`                                                             |
-| `action_confirmation` | Action requires user confirmation (Tier 3)     | `{ "tool_name": "…", "summary": "…", "parameters": { … } }`                                       |
-| `navigate`            | `navigate` action method fired                 | `{ "target": "/admin/…", "params": { … } }`                                                       |
-| `final`               | Turn complete; full assembled model text       | `content: "<full-text>"` **+ sibling** `attachments: [attachment record, …]`                      |
-| `error`               | Anything went wrong                            | `"<human-readable message>"`                                                                      |
+| `type`                | When                                                     | `content` shape / siblings                                                                        |
+| --------------------- | -------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| `session`             | Exactly once, right after `accept()`                     | `{ "session_id": "<uuid>", "agent_id": "<id>" }`                                                  |
+| `history`             | Sent once on connect if a prior session exists           | `{ "agent_id": "<id>", "data": [{"role": "user"\|"model", "text": "…", "attachments"?: [...]}] }` |
+| `context_ack`         | After the server accepts a `context` message             | The stored context, or `null`                                                                     |
+| `delta`               | Incremental streamed text from the model                 | `"<chunk>"` (plain string)                                                                        |
+| `image`               | Inline image from a code-execution tool                  | `{ "mime_type": "image/png", "data": "<base64>" }`                                                |
+| `tool_call`           | Model invoked a function                                 | `{ "name": "<fn>", "args": { … } }`                                                               |
+| `tool_result`         | A function returned (summarised)                         | `{ "name": "<fn>", "result": { … } }`                                                             |
+| `action_confirmation` | Action requires user confirmation (Tier 3)               | `{ "tool_name": "…", "summary": "…", "parameters": { … } }`                                       |
+| `navigate`            | `navigate` action method fired                           | `{ "target": "/admin/…", "params": { … } }`                                                       |
+| `final`               | Turn complete; full assembled model text                 | `content: "<full-text>"` **+ sibling** `attachments: [attachment record, …]`                      |
+| `error`               | Anything went wrong                                      | `"<human-readable message>"`                                                                      |
+| `mode_changed`        | Server confirms a live↔standard mode switch             | `{ "mode": "live" \| "standard" }`                                                                |
+| `audio_output`        | _(live mode)_ Model speech chunk                         | `content: "<base64-encoded bytes>"`, **+ sibling** `mime_type: "<e.g. audio/pcm;rate=16000>"`     |
+| `output_transcript`   | _(live mode)_ Model text alongside the audio response    | `"<text>"` (plain string)                                                                         |
+| `input_transcript`    | _(live mode)_ Speech-to-text of what the user said       | `"<text>"` (plain string)                                                                         |
+| `turn_complete`       | _(live mode)_ Model has finished speaking for this turn  | _(no content field)_                                                                              |
 
 The `final` frame has two top-level siblings:
 
@@ -361,6 +364,10 @@ The `final` frame has two top-level siblings:
 | `{ "context": { "module": "…", "page": "…", "…": "…" } }`                    | Update Concierge module context (no-op on Data Crew) |
 | `{ "type": "action_confirm", "tool_name": "…" }`                              | Approve the pending Tier-3 action                    |
 | `{ "type": "action_cancel", "tool_name": "…" }`                               | Decline the pending Tier-3 action                    |
+| `{ "type": "start_live" }`                                                    | Enter live (voice) mode on this connection           |
+| `{ "audio": "<base64 PCM 16kHz mono s16le>" }` _(live mode only)_            | Microphone audio chunk                               |
+| `{ "end_turn": true }` _(live mode only)_                                     | Signal the model to respond (client-side VAD)        |
+| `{ "end_live": true }` _(live mode only)_                                     | Exit live mode and return to standard text mode      |
 
 Each attachment in the `attachments` array must have three fields:
 
@@ -379,7 +386,7 @@ Each attachment in the `attachments` array must have three fields:
 
 `text` is **required** alongside attachments — a message with attachments but no text returns `error: "Please provide a message."`. For the full upload contract (allowed types, size limit, error responses) see [Section 8.3](#83-user-uploaded-file-attachments).
 
-Blank `text` with no other recognised field gets an `error: "Please provide a message."` frame. For audio input, use the `/live/{agent_id}` endpoint instead (see [Section 9](#9-live-api-multimodal-voice)).
+Blank `text` with no other recognised field gets an `error: "Please provide a message."` frame. For audio input, send `{"type": "start_live"}` first to enter live mode (see [Section 9](#9-live-mode-voice)).
 
 ### 5.3. Turn lifecycle (no tools)
 
@@ -858,105 +865,100 @@ Attachment `url` values are short-lived (GCS signed URLs expire;). When resuming
 
 ---
 
-## 9. Live API (Multimodal Voice)
+## 9. Live Mode (Voice)
 
-The `/live/{agent_id}` endpoint connects to the **Gemini Live API** (`gemini-live-2.5-flash-native-audio`) for real-time, voice-first conversations. It uses a completely different message protocol from `/chat/{agent_id}` — the server bridges raw PCM audio between the browser and the Gemini Live session rather than streaming text tokens.
+Live mode connects the current `/chat/{agent_id}` session to the **Gemini Live API** (`gemini-live-2.5-flash-native-audio`) for real-time, voice-first conversation. It is entered and exited inline on the same WebSocket connection — no second connection, no new `session_id`. Text turns before and after a live segment all share the same conversation history.
 
-### 9.1. Connecting
+### 9.1. Entering and exiting live mode
 
 ```
-wss://host/live/{agent_id}?token=<winp-token>
-wss://host/live/{agent_id}?token=<winp-token>&session_id=<uuid>   # resume
+client → { "type": "start_live" }
+
+server → { "type": "mode_changed", "content": { "mode": "live" } }
+
+  … live audio exchange …
+
+client → { "end_live": true }
+
+server → { "type": "mode_changed", "content": { "mode": "standard" } }
 ```
 
-Authentication is identical to the standard endpoint (see [Section 2](#2-authentication)).
-
-Right after `accept()` the server emits a `session` frame with an extra `input_mode` field:
+The server rejects `start_live` while a text turn is in progress:
 
 ```json
-{
-  "type": "session",
-  "content": {
-    "session_id": "<uuid>",
-    "account": "acme",
-    "email": "user@acme.com",
-    "agent_id": "sally_the_revenue_analyst",
-    "model_id": "gemini-live-2.5-flash-native-audio",
-    "input_mode": "live",
-    "status": "active",
-    "created_at": "2026-05-12T10:00:00+00:00",
-    "modified_at": "2026-05-12T10:00:00+00:00"
-  }
-}
+{ "type": "error", "content": "Cannot switch to live mode while a response is in progress." }
 ```
 
-**Session mode restriction.** A `session_id` created on `/chat/` cannot be resumed on `/live/` and vice versa. Passing the wrong kind causes a `1008` close:
+After the server emits `mode_changed / standard`, the connection returns to normal text mode and you can send `{"text": "…"}` messages again.
 
-```json
-{
-  "type": "error",
-  "content": "Session was created on the standard endpoint and cannot be resumed here."
-}
-```
+### 9.2. Inbound messages during live mode (client → server)
 
-**Session lifetime.** Unlike the Concierge, live sessions are **always released on disconnect** — there is no in-memory cache across reconnects. Pass the same `session_id` on the next connect to resume: the server rehydrates from BigQuery and seeds prior transcript turns into the new Gemini Live context before audio starts.
-
-### 9.2. Inbound message contract (client → server)
-
-All messages are JSON.
-
-| Shape                     | Effect                                                                          |
-| ------------------------- | ------------------------------------------------------------------------------- |
-| `{ "audio": "<base64>" }` | PCM 16 kHz mono s16le chunk from the microphone                                 |
-| `{ "text": "<string>" }`  | Text input (e.g. typed message alongside voice)                                 |
-| `{ "end_turn": true }`    | Signals the model to respond (use when voice activity detection is client-side) |
+| Shape                                 | Effect                                                                          |
+| ------------------------------------- | ------------------------------------------------------------------------------- |
+| `{ "audio": "<base64>" }`             | PCM 16 kHz mono s16le chunk from the microphone                                 |
+| `{ "text": "<string>" }`              | Text input alongside voice (e.g. a typed follow-up)                             |
+| `{ "end_turn": true }`                | Signals the model to respond (use when voice activity detection is client-side) |
+| `{ "end_live": true }`                | Exits live mode; server returns to standard mode                                |
 
 Send audio chunks continuously as they arrive from the microphone. Chunks are queued and streamed to Gemini in order; no framing or length constraints on the client side.
 
-### 9.3. Outbound message contract (server → client)
+### 9.3. Outbound events during live mode (server → client)
 
-| Frame                                            | Description                                                                                                                                          |
-| ------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Raw bytes**                                    | PCM audio from the model (s16le 16 kHz mono). Pipe directly to a Web Audio `AudioWorklet` or `AudioContext`.                                         |
-| `{ "type": "transcript", "content": "…" }`       | Model text transcript emitted alongside the audio response. Use this to display captions of what the model said.                                     |
-| `{ "type": "input_transcript", "content": "…" }` | Speech-to-text transcript of what the user said. Available when the Gemini Live session has `input_audio_transcription` enabled (it is, by default). |
-| `{ "type": "turn_complete" }`                    | The model has finished speaking for this turn.                                                                                                       |
-| `{ "type": "error", "content": "…" }`            | An error occurred. The session closes after this frame.                                                                                              |
+All outbound frames are JSON — there are no raw binary frames. Audio is delivered as base64 inside `audio_output` events.
 
-Note there is **no `session` preamble frame mix** — after the initial `session` frame the server only sends audio bytes and the JSON events above. There are no `delta`, `final`, `tool_call`, or `action_confirmation` frames on the live endpoint.
+| `type`               | `content` / siblings                                      | Description                                                                                       |
+| -------------------- | --------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| `audio_output`       | `content: "<base64>"`, `mime_type: "<format>"`            | Model speech chunk. Decode the base64 bytes and pipe to a Web Audio `AudioWorklet` or `AudioContext`. `mime_type` is typically `"audio/pcm;rate=16000"` but may vary — use it to choose a decoder. |
+| `output_transcript`  | `content: "<text>"`                                       | Model text transcript emitted alongside the audio. Use this to display captions of what the model said. |
+| `input_transcript`   | `content: "<text>"`                                       | Speech-to-text of what the user said. Available because `input_audio_transcription` is enabled by default. |
+| `turn_complete`      | _(none)_                                                  | The model has finished speaking for this turn.                                                    |
+| `error`              | `content: "<message>"`                                    | An error occurred in the Live session.                                                            |
+| `mode_changed`       | `content: { "mode": "live" \| "standard" }`               | Confirms the mode switch (sent at entry and exit).                                                |
+
+There are no `delta`, `final`, `tool_call`, or `action_confirmation` frames during live mode.
 
 ### 9.4. Example exchange
 
 ```
-# Client starts microphone and streams audio
-client → (raw bytes: PCM audio chunk)
-client → (raw bytes: PCM audio chunk)
+client → { "type": "start_live" }
+server → { "type": "mode_changed",      "content": { "mode": "live" } }
+
+# Client streams microphone audio
+client → { "audio": "<base64 PCM chunk>" }
+client → { "audio": "<base64 PCM chunk>" }
 client → { "end_turn": true }
 
-# Gemini responds with audio + transcripts
-server → (raw bytes: PCM audio — model speech)
-server → { "type": "transcript",       "content": "Revenue for Q1 was…" }
+# Model responds with audio chunks + transcripts
+server → { "type": "audio_output",      "content": "<base64>", "mime_type": "audio/pcm;rate=16000" }
+server → { "type": "output_transcript", "content": "Revenue for Q1 was…" }
 server → { "type": "turn_complete" }
 
-# Later: user speech is transcribed
-server → { "type": "input_transcript", "content": "What was revenue in Q1?" }
+# User speech is transcribed (may arrive after turn_complete)
+server → { "type": "input_transcript",  "content": "What was revenue in Q1?" }
+
+client → { "end_live": true }
+server → { "type": "mode_changed",      "content": { "mode": "standard" } }
+
+# Back to text mode — model has full context of the voice exchange
+client → { "text": "And how does that compare to Q2?" }
+server → { "type": "delta",  "content": "In Q2…" }
+server → { "type": "final",  "content": "…", "attachments": [] }
 ```
 
-### 9.5. Transcript persistence and history seeding
+### 9.5. Transcript persistence and history continuity
 
-Both `transcript` and `input_transcript` turns are persisted to `bi_with_ai_chat_message` with `content_type = 'transcript'`. This is the only kind of history the live endpoint stores — there are no tool_call, tool_result, or attachment rows.
-
-When you reconnect with a prior `session_id`, the server loads these transcript rows from BigQuery and silently seeds them into the new Gemini Live context before audio starts. No `history` frame is emitted — transcript history is invisible to the client on the wire, but the model has full conversational context.
+`output_transcript` and `input_transcript` turns are persisted to `bi_with_ai_chat_message` with `content_type = 'transcript'`. When the session returns to standard mode, the server rehydrates the conversation provider with those transcript rows so the model can reference the voice exchange in subsequent text turns. History continuity is automatic — no client action is needed.
 
 ---
 
 ## 10. Reconnect Semantics
 
-| Surface         | Behaviour when you reconnect without `session_id` | Behaviour when you reconnect with `session_id`                                                              |
-| --------------- | ------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
-| Data Crew       | Brand-new conversation.                           | Same conversation: hot-reattach from cache if warm, else rehydrate user/model history from BigQuery.        |
-| Concierge       | Brand-new conversation (the old one is orphaned). | Same conversation: cache hot-reattach or BQ rehydrate. Safe across backend restarts.                        |
-| Live (`/live/`) | Brand-new conversation.                           | Same conversation: transcript history seeded silently into Gemini Live context. No `history` frame emitted. |
+| Surface   | Behaviour when you reconnect without `session_id` | Behaviour when you reconnect with `session_id`                                                       |
+| --------- | ------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| Data Crew | Brand-new conversation.                           | Same conversation: hot-reattach from cache if warm, else rehydrate user/model history from BigQuery. |
+| Concierge | Brand-new conversation (the old one is orphaned). | Same conversation: cache hot-reattach or BQ rehydrate. Safe across backend restarts.                 |
+
+Live mode exists within the `/chat/` session and is not a separate connection. Transcript turns produced during live mode are included in the rehydrated history the next time the session is resumed.
 
 Recommended client reconnect strategy:
 
@@ -986,7 +988,7 @@ Recommended client reconnect strategy:
 
 ## 12. Quick Reference
 
-### Outbound frame cheatsheet — standard endpoint (`/chat/`)
+### Outbound frame cheatsheet — `/chat/` (text mode)
 
 ```
 session             { session_id, agent_id }
@@ -1002,45 +1004,44 @@ final               content: "<full text>",  attachments: [{attachment record + 
 error               "<message>"
 ```
 
-### Outbound frame cheatsheet — live endpoint (`/live/`)
+### Outbound frame cheatsheet — `/chat/` (live mode)
 
 ```
-session             { session_id, agent_id, input_mode: "live" }
-<raw bytes>         PCM audio (s16le 16 kHz mono) — model speech
-transcript          { content: "<model text>" }
-input_transcript    { content: "<user speech>" }
-turn_complete       (no content)
+mode_changed        { mode: "live" | "standard" }   # confirms mode switch
+audio_output        content: "<base64>",  mime_type: "<format>"   # model speech chunk
+output_transcript   "<model text>"                  # caption of what the model said
+input_transcript    "<user speech>"                 # speech-to-text of the user
+turn_complete       (no content field)
 error               "<message>"
 ```
 
-### Inbound frame cheatsheet — standard endpoint (`/chat/`)
+### Inbound frame cheatsheet — `/chat/` (text mode)
 
 ```
 { text: "…" }                                                       # user prompt
 { text: "…", attachments: [{filename, mime_type, data(base64)}] }   # user prompt + files
-{ context: {...} }                                                   # module awareness
+{ context: {...} }                                                   # module awareness (Concierge)
 { type: "action_confirm", tool_name: "…" }                          # approve pending action
 { type: "action_cancel",  tool_name: "…" }                          # decline pending action
+{ type: "start_live" }                                              # enter live (voice) mode
 ```
 
-### Inbound frame cheatsheet — live endpoint (`/live/`)
+### Inbound frame cheatsheet — `/chat/` (live mode)
 
 ```
-{ audio: "<base64 PCM 16kHz mono s16le>" }     # microphone chunk
-{ text: "…" }                                  # text input
-{ end_turn: true }                             # signal model to respond
+{ audio: "<base64 PCM 16kHz mono s16le>" }   # microphone chunk
+{ text: "…" }                                # text input alongside voice
+{ end_turn: true }                           # signal model to respond
+{ end_live: true }                           # exit live mode
 ```
 
 ### URL templates
 
 ```
-wss://host/chat/{agent_id}?token=<winp-token>                                                     # Data Crew — new session
-wss://host/chat/{agent_id}?token=<winp-token>&session_id=<uuid>                                   # Data Crew — resume
-wss://host/chat/concierge?token=<winp-token>&go_auth_token=<go-jwt>                               # Concierge — new session (with menu context)
-wss://host/chat/concierge?token=<winp-token>&go_auth_token=<go-jwt>&session_id=<uuid>             # Concierge — resume (with menu context)
-
-wss://host/live/{agent_id}?token=<winp-token>                       # live audio — new session
-wss://host/live/{agent_id}?token=<winp-token>&session_id=<uuid>     # live audio — resume
+wss://host/chat/{agent_id}?token=<winp-token>                                          # Data Crew — new session
+wss://host/chat/{agent_id}?token=<winp-token>&session_id=<uuid>                        # Data Crew — resume
+wss://host/chat/concierge?token=<winp-token>&go_auth_token=<go-jwt>                    # Concierge — new session (with menu context)
+wss://host/chat/concierge?token=<winp-token>&go_auth_token=<go-jwt>&session_id=<uuid>  # Concierge — resume (with menu context)
 
 GET    /agents                                   (x-winp-token)
 GET    /agents/{agent_id}/threads                (x-winp-token)

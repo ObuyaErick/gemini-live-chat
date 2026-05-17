@@ -1,7 +1,9 @@
 import 'dart:convert';
 
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:mime/mime.dart';
 import 'package:provider/provider.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 import 'package:webs/agents/agents.dart';
@@ -55,6 +57,26 @@ class _LiveChatState extends State<LiveChat> {
   // `_PendingAction` on ChatHandler: while set, the turn is parked until we
   // send back `action_confirm` or `action_cancel`.
   PendingAction? _pendingAction;
+
+  // Files staged by the user via the attach button, sent with the next message.
+  final List<LocalFileAttachment> _stagedFiles = [];
+
+  static const _allowedMimeTypes = {
+    'text/csv',
+    'text/plain',
+    'application/json',
+    'application/pdf',
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    'image/png',
+    'image/jpeg',
+    'image/gif',
+    'image/webp',
+  };
+
+  static const _allowedExtensions = [
+    'csv', 'txt', 'json', 'pdf', 'xlsx',
+    'png', 'jpg', 'jpeg', 'gif', 'webp',
+  ];
 
   @override
   void initState() {
@@ -168,7 +190,11 @@ class _LiveChatState extends State<LiveChat> {
     try {
       final params = {
         'session_id': ?_provider.currentSessionId,
-        'token': ?ApiClient.token,
+        // 'token': ?ApiClient.token,
+        'go_auth_token':
+            'eyJhbGciOiJSUzI1NiIsImtpZCI6ImY4ZTY2MjBkMzk3MTFhYTIxY2U4YTJiZjJmM2VlMDFiOTI0Y2IyZDAiLCJ0eXAiOiJKV1QifQ.eyJpc3MiOiJodHRwczovL2FjY291bnRzLmdvb2dsZS5jb20iLCJhenAiOiIzNzQzNjg4ODE5OTQtNjMyMTkxdnY2YTMwcDc1YmRlaTdhdDY0ZTJodnA5OWkuYXBwcy5nb29nbGV1c2VyY29udGVudC5jb20iLCJhdWQiOiIzNzQzNjg4ODE5OTQtNjMyMTkxdnY2YTMwcDc1YmRlaTdhdDY0ZTJodnA5OWkuYXBwcy5nb29nbGV1c2VyY29udGVudC5jb20iLCJzdWIiOiIxMDI2MTg1MjYzMjAwMzg0NjEyNTIiLCJoZCI6InJlZHV6ZXIudGVjaCIsImVtYWlsIjoiZmVpc2FsQHJlZHV6ZXIudGVjaCIsImVtYWlsX3ZlcmlmaWVkIjp0cnVlLCJub25jZSI6Im51bGwiLCJuYmYiOjE3Nzg4MzA5NTgsIm5hbWUiOiJGZWlzYWwgTWlnbyIsInBpY3R1cmUiOiJodHRwczovL2xoMy5nb29nbGV1c2VyY29udGVudC5jb20vYS9BQ2c4b2NKY1NleW9lVlg0dTh6QnFTNm1VSURtTlI3blp0all4Si1XZzBRVDNFdHQ2NzFvX1E9czk2LWMiLCJnaXZlbl9uYW1lIjoiRmVpc2FsIiwiZmFtaWx5X25hbWUiOiJNaWdvIiwiaWF0IjoxNzc4ODMxMjU4LCJleHAiOjE3Nzg4MzQ4NTgsImp0aSI6ImU2OTFmNDM4ZDAyOTYxZDYyYzcxMWU5MWZiZjlhNjJhYWM4M2Q4NDQifQ.f3-NcwGCQO5ej_fJQftTYVS0WH-LKTLr02Ohvxsx0CCMD8Q2S4g6uS2SOMNoBAC1lL-HLpAut7Lsp3P_gD8FzuOKoN2hCIx8A0OHJue0pmrGqsp5ek7srFq1xVWzF_2wIgrqJR5Y4YOW9KVIX4OW_80I7akUxehYmCIYt3QYrVxVFLbBsD662mY6IudVSaTmb5ikl9XqNu11f-rm0MMTU7AeMYyWgTJYceAh-IooRi2fxMhZEUnwRMf0ADKkV710siZm9ERrpRBXlhxE_StWojQxIS1XIKEQQOQQtW1kI6PqaSKCE0kYBoFo7SWlJPUd6FBajuUHOaEuGOy97S9L-Q',
+        'token':
+            'eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJlcmlja0ByZWR1emVyLnRlY2giLCJzY29wZSI6ImFkbWluIiwicHJvamVjdCI6Indpbi1wLW1vYmlsZXVuaXZlcnNlIiwiYWNjb3VudCI6Im1vYmlsZV91bml2ZXJzZV9hcGkiLCJkcml2ZUlkIjoiMEFQSnJac1JFbWxPOVVrOVBWQSIsImlzcyI6Im9yZ2FuaXphdGlvbkBib3hhbGluby5jb20iLCJqdGkiOiIyYzNmN2IzOWMwZDBmZDIzN2FlYWI2ZDk4YjUyNjQyYTZiNzI5NjNkIiwiZXhwIjoxNzc4NTQ0MzcxLCJjcmVhdGVkIjoiMjAyNi0wNS0xMSAxNDowNjoyMSJ9.C_XiTzgVMDEQJFfotP0m4BDB5SGEu18D2SlZtEBqVsk',
       };
       _channel = WebSocketChannel.connect(
         Uri.parse(
@@ -242,6 +268,7 @@ class _LiveChatState extends State<LiveChat> {
     final Map<String, dynamic> payload;
     try {
       payload = jsonDecode(raw as String);
+      debugPrint("--------\n${jsonEncode(payload)}");
     } catch (_) {
       return; // malformed frame — ignore
     }
@@ -488,16 +515,32 @@ class _LiveChatState extends State<LiveChat> {
     final text = _inputController.text.trim();
     if (text.isEmpty || !_isConnected || _isWaitingForResponse) return;
 
+    final files = _stagedFiles.toList();
+
     setState(() {
-      _messages.add(ChatMessage(role: MessageRole.user, content: text));
+      _messages.add(
+        ChatMessage(
+          role: MessageRole.user,
+          content: text,
+          localAttachments: files,
+        ),
+      );
       _isWaitingForResponse = true;
+      _stagedFiles.clear();
     });
 
     _inputController.clear();
     _scrollToBottom();
 
     try {
-      _channel!.sink.add(jsonEncode({'text': text}));
+      final payload = <String, dynamic>{'text': text};
+      if (files.isNotEmpty) {
+        payload['attachments'] = [
+          for (final f in files)
+            {'filename': f.filename, 'mime_type': f.mimeType, 'data': f.base64Data},
+        ];
+      }
+      _channel!.sink.add(jsonEncode(payload));
     } catch (e) {
       setState(() {
         _isWaitingForResponse = false;
@@ -549,6 +592,58 @@ class _LiveChatState extends State<LiveChat> {
         );
       });
     }
+  }
+
+  Future<void> _pickFile() async {
+    final result = await FilePicker.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: _allowedExtensions,
+      allowMultiple: true,
+      withData: true,
+    );
+    if (result == null || !mounted) return;
+
+    final errors = <String>[];
+    final picked = <LocalFileAttachment>[];
+
+    for (final file in result.files) {
+      final bytes = file.bytes;
+      if (bytes == null) continue;
+
+      if (bytes.length > 20 * 1024 * 1024) {
+        errors.add(
+          '${file.name} is ${(bytes.length / (1024 * 1024)).toStringAsFixed(1)} MB; maximum is 20 MB',
+        );
+        continue;
+      }
+
+      final mime =
+          lookupMimeType(file.name) ??
+          'application/octet-stream';
+      if (!_allowedMimeTypes.contains(mime)) {
+        errors.add('${file.name}: unsupported type "$mime"');
+        continue;
+      }
+
+      picked.add(
+        LocalFileAttachment(filename: file.name, mimeType: mime, bytes: bytes),
+      );
+    }
+
+    setState(() => _stagedFiles.addAll(picked));
+
+    if (errors.isNotEmpty && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(errors.join('\n')),
+          duration: const Duration(seconds: 6),
+        ),
+      );
+    }
+  }
+
+  void _removeStagedFile(LocalFileAttachment file) {
+    setState(() => _stagedFiles.remove(file));
   }
 
   void _scrollToBottom() {
@@ -708,6 +803,9 @@ class _LiveChatState extends State<LiveChat> {
             isWaiting: _isWaitingForResponse,
             agentShortName: agentShortName,
             onSend: _sendMessage,
+            onAttach: _pickFile,
+            stagedFiles: _stagedFiles,
+            onRemoveStagedFile: _removeStagedFile,
           ),
         ],
       ),

@@ -1,8 +1,24 @@
+import 'dart:convert';
 import 'dart:typed_data';
 
 enum MessageRole { user, assistant }
 
 enum MessageStatus { streaming, complete, error }
+
+class LocalFileAttachment {
+  final String filename;
+  final String mimeType;
+  final Uint8List bytes;
+
+  const LocalFileAttachment({
+    required this.filename,
+    required this.mimeType,
+    required this.bytes,
+  });
+
+  String get base64Data => base64Encode(bytes);
+  int get sizeBytes => bytes.length;
+}
 
 class ChatMessage {
   final MessageRole role;
@@ -12,6 +28,7 @@ class ChatMessage {
   final Uint8List? imageBytes;
   final String? imageMimeType;
   List<Attachment> attachments;
+  final List<LocalFileAttachment> localAttachments;
 
   ChatMessage({
     required this.role,
@@ -21,6 +38,7 @@ class ChatMessage {
     this.imageBytes,
     this.imageMimeType,
     this.attachments = const [],
+    this.localAttachments = const [],
   }) : createdAt = createdAt ?? DateTime.now();
 }
 
@@ -101,6 +119,7 @@ class ChatSession {
   final String? email;
   final String? modelId;
   final String? status;
+  final String? inputMode;
   final DateTime? createdAt;
   final String? preview;
 
@@ -111,9 +130,12 @@ class ChatSession {
     this.email,
     this.modelId,
     this.status,
+    this.inputMode,
     this.createdAt,
     this.preview,
   });
+
+  bool get isStandard => inputMode == null || inputMode == 'standard';
 
   ChatSession copyWith({
     String? sessionId,
@@ -122,6 +144,7 @@ class ChatSession {
     String? email,
     String? modelId,
     String? status,
+    String? inputMode,
     DateTime? createdAt,
     String? preview,
   }) {
@@ -132,6 +155,7 @@ class ChatSession {
       email: email ?? this.email,
       modelId: modelId ?? this.modelId,
       status: status ?? this.status,
+      inputMode: inputMode ?? this.inputMode,
       createdAt: createdAt ?? this.createdAt,
       preview: preview ?? this.preview,
     );
@@ -150,7 +174,7 @@ class ChatSession {
         }
       }
     }
-    
+
     return ChatSession(
       sessionId: json['session_id'] as String,
       agentId: json['agent_id'] as String?,
@@ -158,6 +182,7 @@ class ChatSession {
       email: json['email'] as String?,
       modelId: json['model_id'] as String?,
       status: json['status'] as String?,
+      inputMode: json['input_mode'] as String?,
       createdAt: _parseDate(json['created_at']),
       preview: preview,
     );
