@@ -1,6 +1,9 @@
 import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:file_picker/file_picker.dart';
+import 'package:http/http.dart' as http;
+import 'package:just_audio/just_audio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:mime/mime.dart';
@@ -11,6 +14,7 @@ import 'package:webs/api/api_client.dart';
 import 'package:webs/live_chat/models.dart';
 import 'package:webs/live_chat/providers/live_chat_provider.dart';
 import 'package:webs/live_chat/widgets/action_confirmation_card.dart';
+import 'package:webs/live_chat/widgets/document_editor_panel.dart';
 import 'package:webs/live_chat/widgets/date_pill.dart';
 import 'package:webs/live_chat/widgets/empty_state.dart';
 import 'package:webs/live_chat/widgets/error_banner.dart';
@@ -64,6 +68,19 @@ class _LiveChatState extends State<LiveChat> {
   // Whether the connection is currently in live (voice) mode.
   bool _isInLiveMode = false;
 
+  // Editable documents opened by the agent (kind: "editable" attachments).
+  // Keyed by file_id; updated in-place when text_diff ops arrive.
+  final Map<String, TextDocument> _openDocuments = {};
+  String? _activeDocumentFileId;
+
+  // Audio player for live-mode output.
+  AudioPlayer? _audioPlayer;
+
+  // PCM bytes accumulating during the current live-mode turn. Flushed and
+  // played when turn_complete arrives.
+  final List<int> _pendingAudioBytes = [];
+  int _liveAudioSampleRate = 16000;
+
   static const _allowedMimeTypes = {
     'text/csv',
     'text/plain',
@@ -77,8 +94,16 @@ class _LiveChatState extends State<LiveChat> {
   };
 
   static const _allowedExtensions = [
-    'csv', 'txt', 'json', 'pdf', 'xlsx',
-    'png', 'jpg', 'jpeg', 'gif', 'webp',
+    'csv',
+    'txt',
+    'json',
+    'pdf',
+    'xlsx',
+    'png',
+    'jpg',
+    'jpeg',
+    'gif',
+    'webp',
   ];
 
   @override
@@ -94,6 +119,7 @@ class _LiveChatState extends State<LiveChat> {
       // text: _defaultPromptFor(_selectedAgent),
     );
     _provider.loadSessions(_agentId);
+    _audioPlayer = AudioPlayer();
     _connect();
   }
 
@@ -103,6 +129,7 @@ class _LiveChatState extends State<LiveChat> {
     _inputController.dispose();
     _scrollController.dispose();
     _provider.dispose();
+    _audioPlayer?.dispose();
     super.dispose();
   }
 
@@ -137,6 +164,8 @@ class _LiveChatState extends State<LiveChat> {
       _isInLiveMode = false;
       _connectionError = null;
       _inputController.text = '';
+      _openDocuments.clear();
+      _activeDocumentFileId = null;
     });
     _provider.clearCurrentSession();
     _provider.loadSessions(agent.agentId);
@@ -156,6 +185,8 @@ class _LiveChatState extends State<LiveChat> {
       _isWaitingForResponse = false;
       _isInLiveMode = false;
       _connectionError = null;
+      _openDocuments.clear();
+      _activeDocumentFileId = null;
     });
     _provider.selectSession(session.sessionId);
 
@@ -172,6 +203,8 @@ class _LiveChatState extends State<LiveChat> {
       _isWaitingForResponse = false;
       _isInLiveMode = false;
       _connectionError = null;
+      _openDocuments.clear();
+      _activeDocumentFileId = null;
     });
     _provider.clearCurrentSession();
 
@@ -198,9 +231,9 @@ class _LiveChatState extends State<LiveChat> {
         'session_id': ?_provider.currentSessionId,
         // 'token': ?ApiClient.token,
         'go_auth_token':
-            'eyJhbGciOiJSUzI1NiIsImtpZCI6ImY4ZTY2MjBkMzk3MTFhYTIxY2U4YTJiZjJmM2VlMDFiOTI0Y2IyZDAiLCJ0eXAiOiJKV1QifQ.eyJpc3MiOiJodHRwczovL2FjY291bnRzLmdvb2dsZS5jb20iLCJhenAiOiIzNzQzNjg4ODE5OTQtNjMyMTkxdnY2YTMwcDc1YmRlaTdhdDY0ZTJodnA5OWkuYXBwcy5nb29nbGV1c2VyY29udGVudC5jb20iLCJhdWQiOiIzNzQzNjg4ODE5OTQtNjMyMTkxdnY2YTMwcDc1YmRlaTdhdDY0ZTJodnA5OWkuYXBwcy5nb29nbGV1c2VyY29udGVudC5jb20iLCJzdWIiOiIxMDI2MTg1MjYzMjAwMzg0NjEyNTIiLCJoZCI6InJlZHV6ZXIudGVjaCIsImVtYWlsIjoiZmVpc2FsQHJlZHV6ZXIudGVjaCIsImVtYWlsX3ZlcmlmaWVkIjp0cnVlLCJub25jZSI6Im51bGwiLCJuYmYiOjE3Nzg4MzA5NTgsIm5hbWUiOiJGZWlzYWwgTWlnbyIsInBpY3R1cmUiOiJodHRwczovL2xoMy5nb29nbGV1c2VyY29udGVudC5jb20vYS9BQ2c4b2NKY1NleW9lVlg0dTh6QnFTNm1VSURtTlI3blp0all4Si1XZzBRVDNFdHQ2NzFvX1E9czk2LWMiLCJnaXZlbl9uYW1lIjoiRmVpc2FsIiwiZmFtaWx5X25hbWUiOiJNaWdvIiwiaWF0IjoxNzc4ODMxMjU4LCJleHAiOjE3Nzg4MzQ4NTgsImp0aSI6ImU2OTFmNDM4ZDAyOTYxZDYyYzcxMWU5MWZiZjlhNjJhYWM4M2Q4NDQifQ.f3-NcwGCQO5ej_fJQftTYVS0WH-LKTLr02Ohvxsx0CCMD8Q2S4g6uS2SOMNoBAC1lL-HLpAut7Lsp3P_gD8FzuOKoN2hCIx8A0OHJue0pmrGqsp5ek7srFq1xVWzF_2wIgrqJR5Y4YOW9KVIX4OW_80I7akUxehYmCIYt3QYrVxVFLbBsD662mY6IudVSaTmb5ikl9XqNu11f-rm0MMTU7AeMYyWgTJYceAh-IooRi2fxMhZEUnwRMf0ADKkV710siZm9ERrpRBXlhxE_StWojQxIS1XIKEQQOQQtW1kI6PqaSKCE0kYBoFo7SWlJPUd6FBajuUHOaEuGOy97S9L-Q',
+            'eyJhbGciOiJSUzI1NiIsImtpZCI6IjMwMzViYjg2ZDk5ZjIyZTYxMzQ2N2E2NjgwODI1ZWViMGQ4MTM5YTIiLCJ0eXAiOiJKV1QifQ.eyJpc3MiOiJodHRwczovL2FjY291bnRzLmdvb2dsZS5jb20iLCJhenAiOiIzNzQzNjg4ODE5OTQtNjMyMTkxdnY2YTMwcDc1YmRlaTdhdDY0ZTJodnA5OWkuYXBwcy5nb29nbGV1c2VyY29udGVudC5jb20iLCJhdWQiOiIzNzQzNjg4ODE5OTQtNjMyMTkxdnY2YTMwcDc1YmRlaTdhdDY0ZTJodnA5OWkuYXBwcy5nb29nbGV1c2VyY29udGVudC5jb20iLCJzdWIiOiIxMTM4MTc5NTA1MzcwMTA5MjM4MzgiLCJoZCI6InJlZHV6ZXIudGVjaCIsImVtYWlsIjoiZXJpY2tAcmVkdXplci50ZWNoIiwiZW1haWxfdmVyaWZpZWQiOnRydWUsIm5vbmNlIjoibm90X3Byb3ZpZGVkIiwibmJmIjoxNzgxNDQxODY1LCJuYW1lIjoiRXJpY2sgT2J1eWEiLCJwaWN0dXJlIjoiaHR0cHM6Ly9saDMuZ29vZ2xldXNlcmNvbnRlbnQuY29tL2EvQUNnOG9jTHA4bm5HaVQzaWV6MVFmYlBrWHRtcjlFWGxwekFqSFJQdUNoTWtJNnNlRFItZ3ZqTT1zOTYtYyIsImdpdmVuX25hbWUiOiJFcmljayIsImZhbWlseV9uYW1lIjoiT2J1eWEiLCJpYXQiOjE3ODE0NDIxNjUsImV4cCI6MTc4MTQ0NTc2NSwianRpIjoiOWVlYTEwNWZjYjhiM2Q4M2NjYWQ3ZDc0MjdmOWQ5MjM4OTU2MjlmMiJ9.d7HvgKgkH9cOvjuYO3xzzlEkpltbX-1aD2aXFEkWaX1J-_3p9rpnOEn8--Oc5LKN4P077zC34wXHK4ZexohJPHKVFOQPKnfXoOzlLq_OWwnGWCEKWG0gn26aRU1_dwovSM4k2t1KHRDyVTveir_2zApcX-L9RQrrWnF_A4TqCzcOo_MbQsH1lZUWWusnYSsjW2S-OeaRO-1d6BSQ36tOKHaEc9ZG_StBtbAjCJOrlgJEoGISsZeBNdPkUG203nbrBEkwaHT6uZ7eY03709IoohaIWW70LtCaSuE6lRcsZ3B7AJs941Qll2wwHpDkiccsdsj57H7S-H3F22gIzlm3qA',
         'token':
-            'eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJlcmlja0ByZWR1emVyLnRlY2giLCJzY29wZSI6ImFkbWluIiwicHJvamVjdCI6Indpbi1wLW1vYmlsZXVuaXZlcnNlIiwiYWNjb3VudCI6Im1vYmlsZV91bml2ZXJzZV9hcGkiLCJkcml2ZUlkIjoiMEFQSnJac1JFbWxPOVVrOVBWQSIsImlzcyI6Im9yZ2FuaXphdGlvbkBib3hhbGluby5jb20iLCJqdGkiOiIyYzNmN2IzOWMwZDBmZDIzN2FlYWI2ZDk4YjUyNjQyYTZiNzI5NjNkIiwiZXhwIjoxNzc4NTQ0MzcxLCJjcmVhdGVkIjoiMjAyNi0wNS0xMSAxNDowNjoyMSJ9.C_XiTzgVMDEQJFfotP0m4BDB5SGEu18D2SlZtEBqVsk',
+            'eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJlcmlja0ByZWR1emVyLnRlY2giLCJzY29wZSI6ImFkbWluIiwicHJvamVjdCI6Indpbi1wLW1vYmlsZXVuaXZlcnNlIiwiYWNjb3VudCI6Im1vYmlsZV91bml2ZXJzZV9hcGkiLCJkcml2ZUlkIjoiMEFQSnJac1JFbWxPOVVrOVBWQSIsImlzcyI6Im9yZ2FuaXphdGlvbkBib3hhbGluby5jb20iLCJqdGkiOiI5ZWVhMTA1ZmNiOGIzZDgzY2NhZDdkNzQyN2Y5ZDkyMzg5NTYyOWYyIiwiZXhwIjoxNzgxNDg1MzY1LCJjcmVhdGVkIjoiMjAyNi0wNi0xNCAxNTowMzowMiJ9.TofjpfGDWb8hrNp5_C5Ews6PiFN3Pet8UR0QCixAi_k',
       };
       _channel = WebSocketChannel.connect(
         Uri.parse(
@@ -238,6 +271,8 @@ class _LiveChatState extends State<LiveChat> {
 
   void _disconnect() {
     _channel?.sink.close();
+    _pendingAudioBytes.clear();
+    _audioPlayer?.stop();
     setState(() {
       _isConnected = false;
       _isWaitingForResponse = false;
@@ -245,6 +280,8 @@ class _LiveChatState extends State<LiveChat> {
       _streamingMessage = null;
       _pendingAction = null;
       _activeToolEvents.clear();
+      _openDocuments.clear();
+      _activeDocumentFileId = null;
     });
   }
 
@@ -434,6 +471,10 @@ class _LiveChatState extends State<LiveChat> {
           _activeToolEvents.clear();
           _isWaitingForResponse = false;
         });
+        // Open any editable documents delivered in this turn.
+        for (final att in attachments.where((a) => a.isEditable)) {
+          _fetchAndOpenDocument(att);
+        }
         _scrollToBottom();
 
       case 'image':
@@ -479,16 +520,26 @@ class _LiveChatState extends State<LiveChat> {
         final modeContent =
             (payload['content'] as Map?)?.cast<String, dynamic>() ?? {};
         final mode = modeContent['mode'] as String?;
+        if (mode == 'standard' && _pendingAudioBytes.isNotEmpty) {
+          _playPcmAudio(
+            Uint8List.fromList(_pendingAudioBytes),
+            _liveAudioSampleRate,
+          );
+          _pendingAudioBytes.clear();
+        } else if (mode != 'live') {
+          _pendingAudioBytes.clear();
+        }
         setState(() {
           _isInLiveMode = mode == 'live';
           if (mode == 'standard') _isWaitingForResponse = false;
         });
 
       case 'audio_output':
-        // Base64 PCM audio from the model (format in payload['mime_type']).
-        // Playback requires a native audio package; wire payload['content']
-        // into an AudioPlayer when one is available.
-        break;
+        final b64 = payload['content'] as String? ?? '';
+        final mimeType = payload['mime_type'] as String? ?? '';
+        if (b64.isEmpty) break;
+        _liveAudioSampleRate = _parseSampleRate(mimeType);
+        _pendingAudioBytes.addAll(base64Decode(b64));
 
       case 'output_transcript':
         final text = payload['content'] as String? ?? '';
@@ -520,9 +571,63 @@ class _LiveChatState extends State<LiveChat> {
         _scrollToBottom();
 
       case 'turn_complete':
-        // Model finished its live-mode speech turn. No state change needed —
-        // live mode is continuous until the user sends end_live.
+        if (_pendingAudioBytes.isNotEmpty) {
+          _playPcmAudio(
+            Uint8List.fromList(_pendingAudioBytes),
+            _liveAudioSampleRate,
+          );
+          _pendingAudioBytes.clear();
+        }
+
+      case 'executable_code':
+      case 'code_execution_result':
+        // Informational frames — the model's native code execution.
+        // The human-facing answer always follows in delta/final; drop silently.
         break;
+
+      case 'text_diff':
+        final diffContent =
+            (payload['content'] as Map?)?.cast<String, dynamic>() ?? {};
+        final diffFileId = diffContent['file_id'] as String?;
+        final fromVersion = (diffContent['from_version'] as num?)?.toInt() ?? 0;
+        final toVersion = (diffContent['to_version'] as num?)?.toInt() ?? 0;
+        final diffText = diffContent['diff'] as String? ?? '';
+        if (diffFileId == null) break;
+        final targetDoc = _openDocuments[diffFileId];
+        if (targetDoc == null) break;
+        setState(() {
+          if (targetDoc.applyDiff(
+            diffText,
+            fromVersion: fromVersion,
+            toVersion: toVersion,
+          )) {
+            _activeDocumentFileId = diffFileId;
+          }
+        });
+
+      case 'document_resync':
+        final resyncContent =
+            (payload['content'] as Map?)?.cast<String, dynamic>() ?? {};
+        final resyncFileId = resyncContent['file_id'] as String?;
+        final resyncVersion = (resyncContent['version'] as num?)?.toInt() ?? 0;
+        final resyncText = resyncContent['text'] as String? ?? '';
+        if (resyncFileId == null) break;
+        setState(() {
+          if (_openDocuments.containsKey(resyncFileId)) {
+            _openDocuments[resyncFileId]!
+                .resetFromResync(resyncText, resyncVersion);
+          } else {
+            _openDocuments[resyncFileId] = TextDocument(
+              fileId: resyncFileId,
+              filename: (resyncContent['filename'] as String?) ?? resyncFileId,
+              mimeType:
+                  (resyncContent['mime_type'] as String?) ?? 'text/plain',
+              lines: resyncText.split('\n'),
+              version: resyncVersion,
+            );
+            _activeDocumentFileId ??= resyncFileId;
+          }
+        });
 
       case 'error':
         final errMsg = payload['content'] as String? ?? 'Unknown error';
@@ -546,6 +651,8 @@ class _LiveChatState extends State<LiveChat> {
   }
 
   void _onError(Object error) {
+    _pendingAudioBytes.clear();
+    _audioPlayer?.stop();
     setState(() {
       _isConnected = false;
       _isWaitingForResponse = false;
@@ -557,6 +664,7 @@ class _LiveChatState extends State<LiveChat> {
   }
 
   void _onDone() {
+    _pendingAudioBytes.clear();
     setState(() {
       _isConnected = false;
       _isWaitingForResponse = false;
@@ -596,7 +704,11 @@ class _LiveChatState extends State<LiveChat> {
       if (files.isNotEmpty) {
         payload['attachments'] = [
           for (final f in files)
-            {'filename': f.filename, 'mime_type': f.mimeType, 'data': f.base64Data},
+            {
+              'filename': f.filename,
+              'mime_type': f.mimeType,
+              'data': f.base64Data,
+            },
         ];
       }
       _channel!.sink.add(jsonEncode(payload));
@@ -655,7 +767,12 @@ class _LiveChatState extends State<LiveChat> {
 
   void _startLiveMode() {
     final channel = _channel;
-    if (channel == null || !_isConnected || _isInLiveMode || _isWaitingForResponse) return;
+    if (channel == null ||
+        !_isConnected ||
+        _isInLiveMode ||
+        _isWaitingForResponse) {
+      return;
+    }
     try {
       channel.sink.add(jsonEncode({'type': 'start_live'}));
     } catch (_) {}
@@ -666,6 +783,110 @@ class _LiveChatState extends State<LiveChat> {
     if (channel == null || !_isConnected || !_isInLiveMode) return;
     try {
       channel.sink.add(jsonEncode({'end_live': true}));
+    } catch (_) {}
+  }
+
+  // ------------------------------------------------------------------
+  // Document helpers
+  // ------------------------------------------------------------------
+
+  void _sendDocumentEdit(String fileId, int fromVersion, String diff) {
+    final channel = _channel;
+    if (channel == null || !_isConnected || diff.isEmpty) return;
+    try {
+      channel.sink.add(jsonEncode({
+        'type': 'document_edit',
+        'content': {
+          'file_id': fileId,
+          'from_version': fromVersion,
+          'diff': diff,
+        },
+      }));
+    } catch (_) {}
+  }
+
+  Future<void> _fetchAndOpenDocument(Attachment att) async {
+    if (att.url.isEmpty) return;
+    try {
+      final response = await http.get(Uri.parse(att.url));
+      if (response.statusCode == 200 && mounted) {
+        setState(() {
+          _openDocuments[att.fileId] = TextDocument(
+            fileId: att.fileId,
+            filename: att.filename,
+            mimeType: att.mimeType,
+            lines: response.body.split('\n'),
+          );
+          _activeDocumentFileId ??= att.fileId;
+        });
+      }
+    } catch (_) {}
+  }
+
+  // ------------------------------------------------------------------
+  // Audio helpers (live mode)
+  // ------------------------------------------------------------------
+
+  static int _parseSampleRate(String mimeType) {
+    final m = RegExp(r'rate=(\d+)').firstMatch(mimeType);
+    return m != null ? (int.tryParse(m.group(1)!) ?? 16000) : 16000;
+  }
+
+  // Wraps raw PCM s16le bytes in a minimal WAV container so just_audio can
+  // decode it without any native codec support.
+  static Uint8List _buildWav(Uint8List pcm, {int sampleRate = 16000}) {
+    const numChannels = 1;
+    const bitsPerSample = 16;
+    final byteRate = sampleRate * numChannels * bitsPerSample ~/ 8;
+    const blockAlign = numChannels * bitsPerSample ~/ 8;
+    final dataSize = pcm.length;
+
+    final hdr = ByteData(44);
+    // RIFF chunk
+    hdr
+      ..setUint8(0, 0x52)
+      ..setUint8(1, 0x49)
+      ..setUint8(2, 0x46)
+      ..setUint8(3, 0x46)
+      ..setUint32(4, 36 + dataSize, Endian.little)
+      ..setUint8(8, 0x57)
+      ..setUint8(9, 0x41)
+      ..setUint8(10, 0x56)
+      ..setUint8(11, 0x45)
+      // fmt  sub-chunk
+      ..setUint8(12, 0x66)
+      ..setUint8(13, 0x6D)
+      ..setUint8(14, 0x74)
+      ..setUint8(15, 0x20)
+      ..setUint32(16, 16, Endian.little)
+      ..setUint16(20, 1, Endian.little) // PCM
+      ..setUint16(22, numChannels, Endian.little)
+      ..setUint32(24, sampleRate, Endian.little)
+      ..setUint32(28, byteRate, Endian.little)
+      ..setUint16(32, blockAlign, Endian.little)
+      ..setUint16(34, bitsPerSample, Endian.little)
+      // data sub-chunk
+      ..setUint8(36, 0x64)
+      ..setUint8(37, 0x61)
+      ..setUint8(38, 0x74)
+      ..setUint8(39, 0x61)
+      ..setUint32(40, dataSize, Endian.little);
+
+    final out = Uint8List(44 + dataSize);
+    out.setAll(0, hdr.buffer.asUint8List());
+    out.setAll(44, pcm);
+    return out;
+  }
+
+  Future<void> _playPcmAudio(Uint8List pcm, int sampleRate) async {
+    final player = _audioPlayer;
+    if (player == null || pcm.isEmpty) return;
+    final wav = _buildWav(pcm, sampleRate: sampleRate);
+    final dataUri = 'data:audio/wav;base64,${base64Encode(wav)}';
+    try {
+      await player.stop();
+      await player.setUrl(dataUri);
+      await player.play();
     } catch (_) {}
   }
 
@@ -692,9 +913,7 @@ class _LiveChatState extends State<LiveChat> {
         continue;
       }
 
-      final mime =
-          lookupMimeType(file.name) ??
-          'application/octet-stream';
+      final mime = lookupMimeType(file.name) ?? 'application/octet-stream';
       if (!_allowedMimeTypes.contains(mime)) {
         errors.add('${file.name}: unsupported type "$mime"');
         continue;
@@ -745,6 +964,22 @@ class _LiveChatState extends State<LiveChat> {
     );
   }
 
+  Widget _makeEditorPanel() => SizedBox(
+    width: 440,
+    child: DocumentEditorPanel(
+      documents: _openDocuments,
+      activeFileId: _activeDocumentFileId,
+      onSelectDocument: (id) => setState(() => _activeDocumentFileId = id),
+      onClose: (id) => setState(() {
+        _openDocuments.remove(id);
+        if (_activeDocumentFileId == id) {
+          _activeDocumentFileId = _openDocuments.keys.firstOrNull;
+        }
+      }),
+      onUserEdit: _sendDocumentEdit,
+    ),
+  );
+
   // ------------------------------------------------------------------
   // Build
   // ------------------------------------------------------------------
@@ -756,138 +991,133 @@ class _LiveChatState extends State<LiveChat> {
     final agentSubtitle = _selectedAgent?.agentSubtitle;
     final now = DateTime.now();
 
-    Expanded makeChatArea() => Expanded(
-      child: Column(
-        children: [
-          if (_connectionError != null)
-            ErrorBanner(message: _connectionError!, onRetry: _connect),
-          Expanded(
-            child: Stack(
-              children: [
-                _messages.isEmpty
-                    ? SingleChildScrollView(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 16,
-                          vertical: 48,
-                        ),
-                        child: EmptyState(
-                          agentName: agentName,
-                          subtitle: agentSubtitle,
-                          actions: [
-                            ...suggestedQuestions.expand(
-                              (q) => [
-                                SizedBox(height: 10),
-                                Container(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 12,
-                                    vertical: 8,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    border: Border.all(
-                                      color: Theme.of(context)
-                                          .colorScheme
-                                          .outline
-                                          .withValues(alpha: 0.6),
-                                    ),
-                                  ),
-                                  child: Row(
-                                    spacing: 8,
-
-                                    children: [
-                                      Expanded(
-                                        child: Text(
-                                          q.questionText,
-                                          softWrap: true,
-                                          maxLines: 5,
-                                          overflow: TextOverflow.ellipsis,
-                                          style: const TextStyle(
-                                            fontSize: 13,
-                                            fontWeight: FontWeight.w600,
-                                          ),
-                                        ),
-                                      ),
-                                      IconButton(
-                                        constraints: const BoxConstraints(),
-                                        padding: const EdgeInsets.all(4),
-                                        onPressed: () =>
-                                            copyToClipboard(q.questionText),
-                                        icon: const Icon(
-                                          Icons.copy_rounded,
-                                          size: 18,
-                                        ),
-                                      ),
-                                      IconButton(
-                                        constraints: const BoxConstraints(),
-                                        padding: const EdgeInsets.all(4),
-                                        onPressed: () {
-                                          _inputController.text =
-                                              q.questionText;
-                                          _sendMessage();
-                                        },
-                                        icon: const Icon(
-                                          Icons
-                                              .keyboard_double_arrow_right_rounded,
-                                          size: 18,
-                                        ),
-                                      ),
-                                    ],
+    Widget makeChatArea() => Column(
+      children: [
+        if (_connectionError != null)
+          ErrorBanner(message: _connectionError!, onRetry: _connect),
+        Expanded(
+          child: Stack(
+            children: [
+              _messages.isEmpty
+                  ? SingleChildScrollView(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 48,
+                      ),
+                      child: EmptyState(
+                        agentName: agentName,
+                        subtitle: agentSubtitle,
+                        actions: [
+                          ...suggestedQuestions.expand(
+                            (q) => [
+                              SizedBox(height: 10),
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 12,
+                                  vertical: 8,
+                                ),
+                                decoration: BoxDecoration(
+                                  border: Border.all(
+                                    color: Theme.of(context).colorScheme.outline
+                                        .withValues(alpha: 0.6),
                                   ),
                                 ),
-                              ],
-                            ),
-                          ],
-                        ),
-                      )
-                    : ListView.builder(
-                        controller: _scrollController,
-                        padding: const EdgeInsets.fromLTRB(24, 56, 24, 24),
-                        itemCount: _messages.length,
-                        itemBuilder: (context, i) => MessageBubble(
-                          message: _messages[i],
-                          agentName: agentName,
-                          formatTime: _formatTime,
-                        ),
+                                child: Row(
+                                  spacing: 8,
+
+                                  children: [
+                                    Expanded(
+                                      child: Text(
+                                        q.questionText,
+                                        softWrap: true,
+                                        maxLines: 5,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: const TextStyle(
+                                          fontSize: 13,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                      ),
+                                    ),
+                                    IconButton(
+                                      constraints: const BoxConstraints(),
+                                      padding: const EdgeInsets.all(4),
+                                      onPressed: () =>
+                                          copyToClipboard(q.questionText),
+                                      icon: const Icon(
+                                        Icons.copy_rounded,
+                                        size: 18,
+                                      ),
+                                    ),
+                                    IconButton(
+                                      constraints: const BoxConstraints(),
+                                      padding: const EdgeInsets.all(4),
+                                      onPressed: () {
+                                        _inputController.text = q.questionText;
+                                        _sendMessage();
+                                      },
+                                      icon: const Icon(
+                                        Icons
+                                            .keyboard_double_arrow_right_rounded,
+                                        size: 18,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
                       ),
-                Align(
-                  alignment: Alignment.topCenter,
-                  child: Padding(
-                    padding: const EdgeInsets.only(top: 12),
-                    child: DatePill(text: _formatTodayPill(now)),
-                  ),
+                    )
+                  : ListView.builder(
+                      controller: _scrollController,
+                      padding: const EdgeInsets.fromLTRB(24, 56, 24, 24),
+                      itemCount: _messages.length,
+                      itemBuilder: (context, i) => MessageBubble(
+                        message: _messages[i],
+                        agentName: agentName,
+                        formatTime: _formatTime,
+                      ),
+                    ),
+              Align(
+                alignment: Alignment.topCenter,
+                child: Padding(
+                  padding: const EdgeInsets.only(top: 12),
+                  child: DatePill(text: _formatTodayPill(now)),
                 ),
-              ],
-            ),
-          ),
-          if (_activeToolEvents.isNotEmpty)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(24, 8, 24, 0),
-              child: ToolCallChip(events: _activeToolEvents),
-            ),
-          if (_pendingAction != null)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(24, 8, 24, 0),
-              child: ActionConfirmationCard(
-                action: _pendingAction!,
-                onConfirm: _confirmAction,
-                onCancel: _cancelAction,
               ),
-            ),
-          InputBar(
-            controller: _inputController,
-            enabled: _isConnected && !_isWaitingForResponse,
-            isWaiting: _isWaitingForResponse,
-            agentShortName: agentShortName,
-            onSend: _sendMessage,
-            onAttach: _pickFile,
-            stagedFiles: _stagedFiles,
-            onRemoveStagedFile: _removeStagedFile,
-            isInLiveMode: _isInLiveMode,
-            onToggleLiveMode: _isConnected
-                ? (_isInLiveMode ? _endLiveMode : _startLiveMode)
-                : null,
+            ],
           ),
-        ],
-      ),
+        ),
+        if (_activeToolEvents.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(24, 8, 24, 0),
+            child: ToolCallChip(events: _activeToolEvents),
+          ),
+        if (_pendingAction != null)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(24, 8, 24, 0),
+            child: ActionConfirmationCard(
+              action: _pendingAction!,
+              onConfirm: _confirmAction,
+              onCancel: _cancelAction,
+            ),
+          ),
+        InputBar(
+          controller: _inputController,
+          enabled: _isConnected && !_isWaitingForResponse,
+          isWaiting: _isWaitingForResponse,
+          agentShortName: agentShortName,
+          onSend: _sendMessage,
+          onAttach: _pickFile,
+          stagedFiles: _stagedFiles,
+          onRemoveStagedFile: _removeStagedFile,
+          isInLiveMode: _isInLiveMode,
+          onToggleLiveMode: _isConnected
+              ? (_isInLiveMode ? _endLiveMode : _startLiveMode)
+              : null,
+        ),
+      ],
     );
 
     return ChangeNotifierProvider<LiveChatProvider>.value(
@@ -932,7 +1162,12 @@ class _LiveChatState extends State<LiveChat> {
             isSidebarOpen: false,
             onToggleSidebar: () => _scaffoldKey.currentState?.openDrawer(),
           ),
-          body: Row(children: [makeChatArea()]),
+          body: Row(
+            children: [
+              Expanded(flex: 2, child: makeChatArea()),
+              if (_openDocuments.isNotEmpty) _makeEditorPanel(),
+            ],
+          ),
         ),
         md: (context, _) => Scaffold(
           key: _scaffoldKey,
@@ -966,7 +1201,8 @@ class _LiveChatState extends State<LiveChat> {
                 isOpen: _isSidebarOpen,
                 onToggle: _toggleSidebar,
               ),
-              makeChatArea(),
+              Expanded(flex: 2, child: makeChatArea()),
+              if (_openDocuments.isNotEmpty) _makeEditorPanel(),
             ],
           ),
         ),
