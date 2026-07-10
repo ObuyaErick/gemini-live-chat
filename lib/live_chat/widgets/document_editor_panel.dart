@@ -11,9 +11,9 @@ class DocumentEditorPanel extends StatefulWidget {
   final String? activeFileId;
   final void Function(String fileId) onSelectDocument;
   final void Function(String fileId) onClose;
-  /// Called after a debounce when the user edits the document. The parent
+  /// Called on unfocus when the user has edited the document. The parent
   /// should send a `document_edit` frame to the server.
-  final void Function(String fileId, int fromVersion, String diff) onUserEdit;
+  final void Function(String fileId, String diff) onUserEdit;
 
   const DocumentEditorPanel({
     super.key,
@@ -93,7 +93,7 @@ class _DocumentEditorPanelState extends State<DocumentEditorPanel> {
     if (doc == null) return;
     final diff = TextDocument.generateDiff(doc.filename, base, current);
     if (diff.isNotEmpty) {
-      widget.onUserEdit(id, _syncedVersions[id] ?? 0, diff);
+      widget.onUserEdit(id, diff);
     }
   }
 

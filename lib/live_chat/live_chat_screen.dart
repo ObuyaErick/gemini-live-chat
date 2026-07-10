@@ -111,7 +111,7 @@ class _LiveChatState extends State<LiveChat> {
     super.initState();
     _agents = agentModels;
     _selectedAgent = _agents.cast<Agent?>().firstWhere(
-      (a) => a?.agentId == 'concierge',
+      (a) => a?.agentId == 'bob_the_kpi_guy',
       orElse: () => _agents.isNotEmpty ? _agents.first : null,
     );
     _agentId = _selectedAgent?.agentId ?? 'concierge';
@@ -231,9 +231,9 @@ class _LiveChatState extends State<LiveChat> {
         'session_id': ?_provider.currentSessionId,
         // 'token': ?ApiClient.token,
         'go_auth_token':
-            'eyJhbGciOiJSUzI1NiIsImtpZCI6IjMwMzViYjg2ZDk5ZjIyZTYxMzQ2N2E2NjgwODI1ZWViMGQ4MTM5YTIiLCJ0eXAiOiJKV1QifQ.eyJpc3MiOiJodHRwczovL2FjY291bnRzLmdvb2dsZS5jb20iLCJhenAiOiIzNzQzNjg4ODE5OTQtNjMyMTkxdnY2YTMwcDc1YmRlaTdhdDY0ZTJodnA5OWkuYXBwcy5nb29nbGV1c2VyY29udGVudC5jb20iLCJhdWQiOiIzNzQzNjg4ODE5OTQtNjMyMTkxdnY2YTMwcDc1YmRlaTdhdDY0ZTJodnA5OWkuYXBwcy5nb29nbGV1c2VyY29udGVudC5jb20iLCJzdWIiOiIxMTM4MTc5NTA1MzcwMTA5MjM4MzgiLCJoZCI6InJlZHV6ZXIudGVjaCIsImVtYWlsIjoiZXJpY2tAcmVkdXplci50ZWNoIiwiZW1haWxfdmVyaWZpZWQiOnRydWUsIm5vbmNlIjoibm90X3Byb3ZpZGVkIiwibmJmIjoxNzgxNDQxODY1LCJuYW1lIjoiRXJpY2sgT2J1eWEiLCJwaWN0dXJlIjoiaHR0cHM6Ly9saDMuZ29vZ2xldXNlcmNvbnRlbnQuY29tL2EvQUNnOG9jTHA4bm5HaVQzaWV6MVFmYlBrWHRtcjlFWGxwekFqSFJQdUNoTWtJNnNlRFItZ3ZqTT1zOTYtYyIsImdpdmVuX25hbWUiOiJFcmljayIsImZhbWlseV9uYW1lIjoiT2J1eWEiLCJpYXQiOjE3ODE0NDIxNjUsImV4cCI6MTc4MTQ0NTc2NSwianRpIjoiOWVlYTEwNWZjYjhiM2Q4M2NjYWQ3ZDc0MjdmOWQ5MjM4OTU2MjlmMiJ9.d7HvgKgkH9cOvjuYO3xzzlEkpltbX-1aD2aXFEkWaX1J-_3p9rpnOEn8--Oc5LKN4P077zC34wXHK4ZexohJPHKVFOQPKnfXoOzlLq_OWwnGWCEKWG0gn26aRU1_dwovSM4k2t1KHRDyVTveir_2zApcX-L9RQrrWnF_A4TqCzcOo_MbQsH1lZUWWusnYSsjW2S-OeaRO-1d6BSQ36tOKHaEc9ZG_StBtbAjCJOrlgJEoGISsZeBNdPkUG203nbrBEkwaHT6uZ7eY03709IoohaIWW70LtCaSuE6lRcsZ3B7AJs941Qll2wwHpDkiccsdsj57H7S-H3F22gIzlm3qA',
+            'eyJhbGciOiJSUzI1NiIsImtpZCI6ImYzNjE5MTM3MWM4YzRmZmQxNjI4NDZjZGU5MWE5Y2I0YzJiZWJhZTIiLCJ0eXAiOiJKV1QifQ.eyJpc3MiOiJodHRwczovL2FjY291bnRzLmdvb2dsZS5jb20iLCJhenAiOiIzNzQzNjg4ODE5OTQtNjMyMTkxdnY2YTMwcDc1YmRlaTdhdDY0ZTJodnA5OWkuYXBwcy5nb29nbGV1c2VyY29udGVudC5jb20iLCJhdWQiOiIzNzQzNjg4ODE5OTQtNjMyMTkxdnY2YTMwcDc1YmRlaTdhdDY0ZTJodnA5OWkuYXBwcy5nb29nbGV1c2VyY29udGVudC5jb20iLCJzdWIiOiIxMTM4MTc5NTA1MzcwMTA5MjM4MzgiLCJoZCI6InJlZHV6ZXIudGVjaCIsImVtYWlsIjoiZXJpY2tAcmVkdXplci50ZWNoIiwiZW1haWxfdmVyaWZpZWQiOnRydWUsIm5vbmNlIjoibm90X3Byb3ZpZGVkIiwibmJmIjoxNzgyODkyOTIxLCJuYW1lIjoiRXJpY2sgT2J1eWEiLCJwaWN0dXJlIjoiaHR0cHM6Ly9saDMuZ29vZ2xldXNlcmNvbnRlbnQuY29tL2EvQUNnOG9jTHA4bm5HaVQzaWV6MVFmYlBrWHRtcjlFWGxwekFqSFJQdUNoTWtJNnNlRFItZ3ZqTT1zOTYtYyIsImdpdmVuX25hbWUiOiJFcmljayIsImZhbWlseV9uYW1lIjoiT2J1eWEiLCJpYXQiOjE3ODI4OTMyMjEsImV4cCI6MTc4Mjg5NjgyMSwianRpIjoiNWZhOWU3NmNlZjE1MmIxNDk4NzNlNjBlZDJlOGMzZTU3MmZiOTk5ZiJ9.SxWyPsb8X3mHlHSzu0FdSPUJybF1YUrFZuZDoAfuXAB7HtskQpF-OeBeKUsIklkm9fXPpF76p5_YSYJv-YBQlNfld8ce2lukCeX4yspirKQE5zmZHgu41dEAGtUK2BbTLulu_qzC32eHNPZ8NX3JoshMWEaQaU-skofDiHHSmzruxl8y7spt3GiEhe2Ia40brtaT-1_-MqYAy6N-gi33DEJgTE_yP1F5Ow1CMhzE3XaGLZ2QyLZOzkxo5OkClZT-rWhqpx9X4VuZf6I6vZAT3BbL79U20G5YEbTET-kRjnHJWtdELBnxvFuT7UUaf8Tw1a_9-BN315M-XHGHGSru1A',
         'token':
-            'eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJlcmlja0ByZWR1emVyLnRlY2giLCJzY29wZSI6ImFkbWluIiwicHJvamVjdCI6Indpbi1wLW1vYmlsZXVuaXZlcnNlIiwiYWNjb3VudCI6Im1vYmlsZV91bml2ZXJzZV9hcGkiLCJkcml2ZUlkIjoiMEFQSnJac1JFbWxPOVVrOVBWQSIsImlzcyI6Im9yZ2FuaXphdGlvbkBib3hhbGluby5jb20iLCJqdGkiOiI5ZWVhMTA1ZmNiOGIzZDgzY2NhZDdkNzQyN2Y5ZDkyMzg5NTYyOWYyIiwiZXhwIjoxNzgxNDg1MzY1LCJjcmVhdGVkIjoiMjAyNi0wNi0xNCAxNTowMzowMiJ9.TofjpfGDWb8hrNp5_C5Ews6PiFN3Pet8UR0QCixAi_k',
+            'eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJlcmlja0ByZWR1emVyLnRlY2giLCJzY29wZSI6ImFkbWluIiwicHJvamVjdCI6Indpbi1wLW1vYmlsZXVuaXZlcnNlIiwiYWNjb3VudCI6Im1vYmlsZV91bml2ZXJzZV9hcGkiLCJkcml2ZUlkIjoiMEFQSnJac1JFbWxPOVVrOVBWQSIsImlzcyI6Im9yZ2FuaXphdGlvbkBib3hhbGluby5jb20iLCJqdGkiOiI1ZmE5ZTc2Y2VmMTUyYjE0OTg3M2U2MGVkMmU4YzNlNTcyZmI5OTlmIiwiZXhwIjoxNzgyOTM2NDIxLCJjcmVhdGVkIjoiMjAyNi0wNy0wMSAxMDowNzo1MSJ9.XIv_qCj1OmVaNBfwlNH9Dl4O-zRS0YxxJi4m-jZ57U8',
       };
       _channel = WebSocketChannel.connect(
         Uri.parse(
@@ -344,7 +344,11 @@ class _LiveChatState extends State<LiveChat> {
           _messages
             ..clear()
             ..addAll(
-              entries.whereType<Map>().map((raw) {
+              // role: "edit" entries are document diffs, not chat bubbles — skip.
+              entries.whereType<Map>().where((raw) {
+                final role = raw['role'] as String?;
+                return role == 'user' || role == 'model';
+              }).map((raw) {
                 final e = raw.cast<String, dynamic>();
                 final role = (e['role'] as String?) ?? 'assistant';
                 return ChatMessage(
@@ -363,6 +367,28 @@ class _LiveChatState extends State<LiveChat> {
           _isWaitingForResponse = false;
         });
         _scrollToBottom();
+        // Build edit index: file_id → chronological list of role:"edit" entries.
+        final editsByFileId = <String, List<Map<String, dynamic>>>{};
+        for (final raw in entries.whereType<Map>()) {
+          final e = raw.cast<String, dynamic>();
+          if ((e['role'] as String?) == 'edit') {
+            final fileId = e['file_id'] as String?;
+            if (fileId != null) {
+              editsByFileId.putIfAbsent(fileId, () => []).add(e);
+            }
+          }
+        }
+        // Open editable attachments, replaying their edit history on top.
+        final seen = <String>{};
+        for (final raw in entries.whereType<Map>()) {
+          final e = raw.cast<String, dynamic>();
+          if ((e['role'] as String?) != 'model') continue;
+          for (final att in _parseAttachments(e['attachments']).where((a) => a.isEditable)) {
+            if (seen.add(att.fileId)) {
+              _fetchAndOpenDocument(att, edits: editsByFileId[att.fileId] ?? const []);
+            }
+          }
+        }
 
       case 'tool_call':
         final callContent =
@@ -790,37 +816,51 @@ class _LiveChatState extends State<LiveChat> {
   // Document helpers
   // ------------------------------------------------------------------
 
-  void _sendDocumentEdit(String fileId, int fromVersion, String diff) {
+  void _sendDocumentEdit(String fileId, String diff) {
     final channel = _channel;
     if (channel == null || !_isConnected || diff.isEmpty) return;
     try {
       channel.sink.add(jsonEncode({
         'type': 'document_edit',
-        'content': {
-          'file_id': fileId,
-          'from_version': fromVersion,
-          'diff': diff,
-        },
+        'content': {'file_id': fileId, 'diff': diff},
       }));
     } catch (_) {}
   }
 
-  Future<void> _fetchAndOpenDocument(Attachment att) async {
+  Future<void> _fetchAndOpenDocument(
+    Attachment att, {
+    List<Map<String, dynamic>> edits = const [],
+  }) async {
     if (att.url.isEmpty) return;
     try {
       final response = await http.get(Uri.parse(att.url));
-      if (response.statusCode == 200 && mounted) {
-        setState(() {
-          _openDocuments[att.fileId] = TextDocument(
+      if (mounted) {
+        if (response.statusCode == 200) {
+          final doc = TextDocument(
             fileId: att.fileId,
             filename: att.filename,
             mimeType: att.mimeType,
             lines: response.body.split('\n'),
           );
-          _activeDocumentFileId ??= att.fileId;
-        });
+          // Replay only edits that belong to this document.
+          for (final edit in edits) {
+            if ((edit['file_id'] as String?) != att.fileId) continue;
+            final fromVersion = (edit['from_version'] as num?)?.toInt() ?? 0;
+            final toVersion = (edit['to_version'] as num?)?.toInt() ?? 0;
+            final diff = edit['diff'] as String? ?? '';
+            doc.applyDiff(diff, fromVersion: fromVersion, toVersion: toVersion);
+          }
+          setState(() {
+            _openDocuments[att.fileId] = doc;
+            _activeDocumentFileId ??= att.fileId;
+          });
+        } else {
+          debugPrint('[doc-fetch] ${att.filename}: HTTP ${response.statusCode}');
+        }
       }
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('[doc-fetch] ${att.filename}: $e');
+    }
   }
 
   // ------------------------------------------------------------------
