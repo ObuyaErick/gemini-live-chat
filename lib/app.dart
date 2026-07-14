@@ -2,7 +2,7 @@
 
 import 'package:flutter/material.dart';
 import 'package:webs/api/api_client.dart';
-import 'package:webs/auth/auth_screen.dart';
+// import 'package:webs/auth/auth_screen.dart';
 import 'package:webs/lab/table_demo_screen.dart';
 import 'package:webs/live_chat/live_chat_screen.dart';
 import 'package:webs/live_chat/models.dart';
@@ -16,6 +16,7 @@ const _demoChatContext = ChatContext(
     'date_range': 'last_30_days',
     'category_id': 'apparel',
   },
+
   // selection: ChatContextSelection(
   //   type: 'product',
   //   id: 'prod_123',
@@ -37,9 +38,8 @@ class _AppState extends State<App> {
       title: 'Flutter Demo',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(colorScheme: .fromSeed(seedColor: Colors.deepPurple)),
-      home: ApiClient.token?.isNotEmpty == true
-          ? const LiveChat(chatContext: _demoChatContext)
-          : const AuthScreen(),
+      home: const LiveChat(chatContext: _demoChatContext),
+
       // home: TableDemoScreen(),
     );
   }

@@ -73,6 +73,12 @@ class _LiveChatState extends State<LiveChat> {
   final Map<String, TextDocument> _openDocuments = {};
   String? _activeDocumentFileId;
 
+  // Pending AI-proposed diffs (text_diff is always a proposal in v9).
+  // Keyed by file_id → diff text for display in the banner.
+  final Map<String, String> _pendingProposals = {};
+  // from_version stored separately so _acceptProposal can call applyDiff correctly.
+  final Map<String, int> _proposalFromVersions = {};
+
   // Audio player for live-mode output.
   AudioPlayer? _audioPlayer;
 
@@ -111,7 +117,7 @@ class _LiveChatState extends State<LiveChat> {
     super.initState();
     _agents = agentModels;
     _selectedAgent = _agents.cast<Agent?>().firstWhere(
-      (a) => a?.agentId == 'bob_the_kpi_guy',
+      (a) => a?.agentId == 'concierge',
       orElse: () => _agents.isNotEmpty ? _agents.first : null,
     );
     _agentId = _selectedAgent?.agentId ?? 'concierge';
@@ -166,6 +172,8 @@ class _LiveChatState extends State<LiveChat> {
       _inputController.text = '';
       _openDocuments.clear();
       _activeDocumentFileId = null;
+      _pendingProposals.clear();
+      _proposalFromVersions.clear();
     });
     _provider.clearCurrentSession();
     _provider.loadSessions(agent.agentId);
@@ -187,6 +195,8 @@ class _LiveChatState extends State<LiveChat> {
       _connectionError = null;
       _openDocuments.clear();
       _activeDocumentFileId = null;
+      _pendingProposals.clear();
+      _proposalFromVersions.clear();
     });
     _provider.selectSession(session.sessionId);
 
@@ -205,6 +215,8 @@ class _LiveChatState extends State<LiveChat> {
       _connectionError = null;
       _openDocuments.clear();
       _activeDocumentFileId = null;
+      _pendingProposals.clear();
+      _proposalFromVersions.clear();
     });
     _provider.clearCurrentSession();
 
@@ -229,11 +241,8 @@ class _LiveChatState extends State<LiveChat> {
     try {
       final params = {
         'session_id': ?_provider.currentSessionId,
-        // 'token': ?ApiClient.token,
-        'go_auth_token':
-            'eyJhbGciOiJSUzI1NiIsImtpZCI6ImYzNjE5MTM3MWM4YzRmZmQxNjI4NDZjZGU5MWE5Y2I0YzJiZWJhZTIiLCJ0eXAiOiJKV1QifQ.eyJpc3MiOiJodHRwczovL2FjY291bnRzLmdvb2dsZS5jb20iLCJhenAiOiIzNzQzNjg4ODE5OTQtNjMyMTkxdnY2YTMwcDc1YmRlaTdhdDY0ZTJodnA5OWkuYXBwcy5nb29nbGV1c2VyY29udGVudC5jb20iLCJhdWQiOiIzNzQzNjg4ODE5OTQtNjMyMTkxdnY2YTMwcDc1YmRlaTdhdDY0ZTJodnA5OWkuYXBwcy5nb29nbGV1c2VyY29udGVudC5jb20iLCJzdWIiOiIxMTM4MTc5NTA1MzcwMTA5MjM4MzgiLCJoZCI6InJlZHV6ZXIudGVjaCIsImVtYWlsIjoiZXJpY2tAcmVkdXplci50ZWNoIiwiZW1haWxfdmVyaWZpZWQiOnRydWUsIm5vbmNlIjoibm90X3Byb3ZpZGVkIiwibmJmIjoxNzgyODkyOTIxLCJuYW1lIjoiRXJpY2sgT2J1eWEiLCJwaWN0dXJlIjoiaHR0cHM6Ly9saDMuZ29vZ2xldXNlcmNvbnRlbnQuY29tL2EvQUNnOG9jTHA4bm5HaVQzaWV6MVFmYlBrWHRtcjlFWGxwekFqSFJQdUNoTWtJNnNlRFItZ3ZqTT1zOTYtYyIsImdpdmVuX25hbWUiOiJFcmljayIsImZhbWlseV9uYW1lIjoiT2J1eWEiLCJpYXQiOjE3ODI4OTMyMjEsImV4cCI6MTc4Mjg5NjgyMSwianRpIjoiNWZhOWU3NmNlZjE1MmIxNDk4NzNlNjBlZDJlOGMzZTU3MmZiOTk5ZiJ9.SxWyPsb8X3mHlHSzu0FdSPUJybF1YUrFZuZDoAfuXAB7HtskQpF-OeBeKUsIklkm9fXPpF76p5_YSYJv-YBQlNfld8ce2lukCeX4yspirKQE5zmZHgu41dEAGtUK2BbTLulu_qzC32eHNPZ8NX3JoshMWEaQaU-skofDiHHSmzruxl8y7spt3GiEhe2Ia40brtaT-1_-MqYAy6N-gi33DEJgTE_yP1F5Ow1CMhzE3XaGLZ2QyLZOzkxo5OkClZT-rWhqpx9X4VuZf6I6vZAT3BbL79U20G5YEbTET-kRjnHJWtdELBnxvFuT7UUaf8Tw1a_9-BN315M-XHGHGSru1A',
-        'token':
-            'eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJlcmlja0ByZWR1emVyLnRlY2giLCJzY29wZSI6ImFkbWluIiwicHJvamVjdCI6Indpbi1wLW1vYmlsZXVuaXZlcnNlIiwiYWNjb3VudCI6Im1vYmlsZV91bml2ZXJzZV9hcGkiLCJkcml2ZUlkIjoiMEFQSnJac1JFbWxPOVVrOVBWQSIsImlzcyI6Im9yZ2FuaXphdGlvbkBib3hhbGluby5jb20iLCJqdGkiOiI1ZmE5ZTc2Y2VmMTUyYjE0OTg3M2U2MGVkMmU4YzNlNTcyZmI5OTlmIiwiZXhwIjoxNzgyOTM2NDIxLCJjcmVhdGVkIjoiMjAyNi0wNy0wMSAxMDowNzo1MSJ9.XIv_qCj1OmVaNBfwlNH9Dl4O-zRS0YxxJi4m-jZ57U8',
+        'go_auth_token': ?ApiClient.goAuthToken,
+        'token': ?ApiClient.token,
       };
       _channel = WebSocketChannel.connect(
         Uri.parse(
@@ -282,6 +291,8 @@ class _LiveChatState extends State<LiveChat> {
       _activeToolEvents.clear();
       _openDocuments.clear();
       _activeDocumentFileId = null;
+      _pendingProposals.clear();
+      _proposalFromVersions.clear();
     });
   }
 
@@ -345,21 +356,24 @@ class _LiveChatState extends State<LiveChat> {
             ..clear()
             ..addAll(
               // role: "edit" entries are document diffs, not chat bubbles — skip.
-              entries.whereType<Map>().where((raw) {
-                final role = raw['role'] as String?;
-                return role == 'user' || role == 'model';
-              }).map((raw) {
-                final e = raw.cast<String, dynamic>();
-                final role = (e['role'] as String?) ?? 'assistant';
-                return ChatMessage(
-                  role: role == 'user'
-                      ? MessageRole.user
-                      : MessageRole.assistant,
-                  content: (e['text'] as String?) ?? '',
-                  status: MessageStatus.complete,
-                  attachments: _parseAttachments(e['attachments']),
-                );
-              }),
+              entries
+                  .whereType<Map>()
+                  .where((raw) {
+                    final role = raw['role'] as String?;
+                    return role == 'user' || role == 'model';
+                  })
+                  .map((raw) {
+                    final e = raw.cast<String, dynamic>();
+                    final role = (e['role'] as String?) ?? 'assistant';
+                    return ChatMessage(
+                      role: role == 'user'
+                          ? MessageRole.user
+                          : MessageRole.assistant,
+                      content: (e['text'] as String?) ?? '',
+                      status: MessageStatus.complete,
+                      attachments: _parseAttachments(e['attachments']),
+                    );
+                  }),
             );
           _streamingMessage = null;
           _activeToolEvents.clear();
@@ -383,9 +397,14 @@ class _LiveChatState extends State<LiveChat> {
         for (final raw in entries.whereType<Map>()) {
           final e = raw.cast<String, dynamic>();
           if ((e['role'] as String?) != 'model') continue;
-          for (final att in _parseAttachments(e['attachments']).where((a) => a.isEditable)) {
+          for (final att in _parseAttachments(
+            e['attachments'],
+          ).where((a) => a.isEditable)) {
             if (seen.add(att.fileId)) {
-              _fetchAndOpenDocument(att, edits: editsByFileId[att.fileId] ?? const []);
+              _fetchAndOpenDocument(
+                att,
+                edits: editsByFileId[att.fileId] ?? const [],
+              );
             }
           }
         }
@@ -612,23 +631,21 @@ class _LiveChatState extends State<LiveChat> {
         break;
 
       case 'text_diff':
+        // v9: text_diff is ALWAYS a proposal — never a commit.
+        // Render the diff in the accept/reject banner; do not apply to the doc.
         final diffContent =
             (payload['content'] as Map?)?.cast<String, dynamic>() ?? {};
         final diffFileId = diffContent['file_id'] as String?;
-        final fromVersion = (diffContent['from_version'] as num?)?.toInt() ?? 0;
-        final toVersion = (diffContent['to_version'] as num?)?.toInt() ?? 0;
-        final diffText = diffContent['diff'] as String? ?? '';
         if (diffFileId == null) break;
-        final targetDoc = _openDocuments[diffFileId];
-        if (targetDoc == null) break;
+        if (!_openDocuments.containsKey(diffFileId)) break;
+        final proposalDiff = diffContent['diff'] as String? ?? '';
+        if (proposalDiff.isEmpty) break;
+        final proposalFrom =
+            (diffContent['from_version'] as num?)?.toInt() ?? 0;
         setState(() {
-          if (targetDoc.applyDiff(
-            diffText,
-            fromVersion: fromVersion,
-            toVersion: toVersion,
-          )) {
-            _activeDocumentFileId = diffFileId;
-          }
+          _pendingProposals[diffFileId] = proposalDiff;
+          _proposalFromVersions[diffFileId] = proposalFrom;
+          _activeDocumentFileId = diffFileId;
         });
 
       case 'document_resync':
@@ -639,15 +656,19 @@ class _LiveChatState extends State<LiveChat> {
         final resyncText = resyncContent['text'] as String? ?? '';
         if (resyncFileId == null) break;
         setState(() {
+          // A resync supersedes any pending proposal for this document.
+          _pendingProposals.remove(resyncFileId);
+          _proposalFromVersions.remove(resyncFileId);
           if (_openDocuments.containsKey(resyncFileId)) {
-            _openDocuments[resyncFileId]!
-                .resetFromResync(resyncText, resyncVersion);
+            _openDocuments[resyncFileId]!.resetFromResync(
+              resyncText,
+              resyncVersion,
+            );
           } else {
             _openDocuments[resyncFileId] = TextDocument(
               fileId: resyncFileId,
               filename: (resyncContent['filename'] as String?) ?? resyncFileId,
-              mimeType:
-                  (resyncContent['mime_type'] as String?) ?? 'text/plain',
+              mimeType: (resyncContent['mime_type'] as String?) ?? 'text/plain',
               lines: resyncText.split('\n'),
               version: resyncVersion,
             );
@@ -727,6 +748,9 @@ class _LiveChatState extends State<LiveChat> {
 
     try {
       final payload = <String, dynamic>{'text': text};
+      if (_activeDocumentFileId != null) {
+        payload['focused_file_id'] = _activeDocumentFileId;
+      }
       if (files.isNotEmpty) {
         payload['attachments'] = [
           for (final f in files)
@@ -816,15 +840,44 @@ class _LiveChatState extends State<LiveChat> {
   // Document helpers
   // ------------------------------------------------------------------
 
-  void _sendDocumentEdit(String fileId, String diff) {
+  void _sendDocumentEdit(String fileId, String diff, {String origin = 'user'}) {
     final channel = _channel;
     if (channel == null || !_isConnected || diff.isEmpty) return;
     try {
-      channel.sink.add(jsonEncode({
-        'type': 'document_edit',
-        'content': {'file_id': fileId, 'diff': diff},
-      }));
+      channel.sink.add(
+        jsonEncode({
+          'type': 'document_edit',
+          'content': {'file_id': fileId, 'diff': diff, 'origin': origin},
+        }),
+      );
     } catch (_) {}
+  }
+
+  void _acceptProposal(String fileId) {
+    final diff = _pendingProposals[fileId];
+    if (diff == null || diff.isEmpty) return;
+    final fromVersion = _proposalFromVersions[fileId] ?? 0;
+    // v9: no server reply — apply locally and advance version before sending.
+    setState(() {
+      final doc = _openDocuments[fileId];
+      if (doc != null) {
+        doc.applyDiff(
+          diff,
+          fromVersion: fromVersion,
+          toVersion: fromVersion + 1,
+        );
+      }
+      _pendingProposals.remove(fileId);
+      _proposalFromVersions.remove(fileId);
+    });
+    _sendDocumentEdit(fileId, diff, origin: 'agent');
+  }
+
+  void _rejectProposal(String fileId) {
+    setState(() {
+      _pendingProposals.remove(fileId);
+      _proposalFromVersions.remove(fileId);
+    });
   }
 
   Future<void> _fetchAndOpenDocument(
@@ -855,7 +908,9 @@ class _LiveChatState extends State<LiveChat> {
             _activeDocumentFileId ??= att.fileId;
           });
         } else {
-          debugPrint('[doc-fetch] ${att.filename}: HTTP ${response.statusCode}');
+          debugPrint(
+            '[doc-fetch] ${att.filename}: HTTP ${response.statusCode}',
+          );
         }
       }
     } catch (e) {
@@ -1012,11 +1067,23 @@ class _LiveChatState extends State<LiveChat> {
       onSelectDocument: (id) => setState(() => _activeDocumentFileId = id),
       onClose: (id) => setState(() {
         _openDocuments.remove(id);
+        _pendingProposals.remove(id);
         if (_activeDocumentFileId == id) {
           _activeDocumentFileId = _openDocuments.keys.firstOrNull;
         }
       }),
-      onUserEdit: _sendDocumentEdit,
+      onUserEdit: (fileId, diff, newText) {
+        _sendDocumentEdit(fileId, diff);
+        // v9: no server reply — advance version locally so the next diff
+        // is computed from the correct base.
+        setState(() {
+          final doc = _openDocuments[fileId];
+          if (doc != null) doc.resetFromResync(newText, doc.version + 1);
+        });
+      },
+      pendingProposals: _pendingProposals,
+      onAcceptProposal: _acceptProposal,
+      onRejectProposal: _rejectProposal,
     ),
   );
 

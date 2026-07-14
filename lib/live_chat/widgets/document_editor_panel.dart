@@ -12,8 +12,13 @@ class DocumentEditorPanel extends StatefulWidget {
   final void Function(String fileId) onSelectDocument;
   final void Function(String fileId) onClose;
   /// Called on unfocus when the user has edited the document. The parent
-  /// should send a `document_edit` frame to the server.
-  final void Function(String fileId, String diff) onUserEdit;
+  /// should send a `document_edit` frame and advance the local doc version.
+  /// [newText] is the full committed text so the parent can call resetFromResync.
+  final void Function(String fileId, String diff, String newText) onUserEdit;
+  /// Pending AI-proposed diffs awaiting user accept/reject. Keyed by file_id.
+  final Map<String, String> pendingProposals;
+  final void Function(String fileId) onAcceptProposal;
+  final void Function(String fileId) onRejectProposal;
 
   const DocumentEditorPanel({
     super.key,
@@ -22,6 +27,9 @@ class DocumentEditorPanel extends StatefulWidget {
     required this.onSelectDocument,
     required this.onClose,
     required this.onUserEdit,
+    required this.pendingProposals,
+    required this.onAcceptProposal,
+    required this.onRejectProposal,
   });
 
   @override
@@ -93,7 +101,7 @@ class _DocumentEditorPanelState extends State<DocumentEditorPanel> {
     if (doc == null) return;
     final diff = TextDocument.generateDiff(doc.filename, base, current);
     if (diff.isNotEmpty) {
-      widget.onUserEdit(id, diff);
+      widget.onUserEdit(id, diff, current);
     }
   }
 
@@ -115,6 +123,8 @@ class _DocumentEditorPanelState extends State<DocumentEditorPanel> {
     final activeId = widget.activeFileId;
     final activeDoc = activeId != null ? docs[activeId] : null;
     final activeController = activeId != null ? _controllers[activeId] : null;
+    final pendingDiff =
+        activeId != null ? widget.pendingProposals[activeId] : null;
 
     return Container(
       decoration: BoxDecoration(
@@ -174,6 +184,14 @@ class _DocumentEditorPanelState extends State<DocumentEditorPanel> {
             ),
           ),
           Divider(height: 1, color: theme.dividerColor),
+
+          // ── AI proposal banner ───────────────────────────────────────────
+          if (pendingDiff != null && activeId != null)
+            _ProposalBanner(
+              diff: pendingDiff,
+              onAccept: () => widget.onAcceptProposal(activeId),
+              onReject: () => widget.onRejectProposal(activeId),
+            ),
 
           // ── Editor body ─────────────────────────────────────────────────
           Expanded(
@@ -301,6 +319,150 @@ class _CloseButton extends StatelessWidget {
         color: Theme.of(context).colorScheme.onSurfaceVariant,
       ),
       onPressed: onPressed,
+    );
+  }
+}
+
+class _ProposalBanner extends StatelessWidget {
+  final String diff;
+  final VoidCallback onAccept;
+  final VoidCallback onReject;
+
+  const _ProposalBanner({
+    required this.diff,
+    required this.onAccept,
+    required this.onReject,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final lines = diff.split('\n');
+
+    return Container(
+      decoration: BoxDecoration(
+        border: Border(bottom: BorderSide(color: theme.dividerColor)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // ── Header row ─────────────────────────────────────────────────
+          Padding(
+            padding: const EdgeInsets.fromLTRB(14, 8, 8, 8),
+            child: Row(
+              children: [
+                Icon(
+                  Icons.auto_fix_high_rounded,
+                  size: 15,
+                  color: theme.colorScheme.secondary,
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  'AI suggested changes',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: theme.colorScheme.onSurface,
+                  ),
+                ),
+                const Spacer(),
+                TextButton(
+                  onPressed: onReject,
+                  style: TextButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 4,
+                    ),
+                    minimumSize: Size.zero,
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    foregroundColor: theme.colorScheme.onSurfaceVariant,
+                  ),
+                  child: const Text('Reject', style: TextStyle(fontSize: 12)),
+                ),
+                const SizedBox(width: 4),
+                FilledButton(
+                  onPressed: onAccept,
+                  style: FilledButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 4,
+                    ),
+                    minimumSize: Size.zero,
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    textStyle: const TextStyle(fontSize: 12),
+                  ),
+                  child: const Text('Accept'),
+                ),
+              ],
+            ),
+          ),
+          // ── Diff view ──────────────────────────────────────────────────
+          Container(
+            constraints: const BoxConstraints(maxHeight: 220),
+            color: theme.colorScheme.surfaceContainerLowest,
+            child: SingleChildScrollView(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  for (final line in lines) _DiffLine(line: line),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _DiffLine extends StatelessWidget {
+  final String line;
+  const _DiffLine({required this.line});
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    final Color? bg;
+    final Color textColor;
+
+    if (line.startsWith('---') || line.startsWith('+++')) {
+      bg = null;
+      textColor = Theme.of(context).colorScheme.onSurfaceVariant;
+    } else if (line.startsWith('-')) {
+      bg = isDark
+          ? const Color(0x33F44336)
+          : const Color(0x1FF44336); // red tint
+      textColor = isDark ? const Color(0xFFEF9A9A) : const Color(0xFFB71C1C);
+    } else if (line.startsWith('+')) {
+      bg = isDark
+          ? const Color(0x334CAF50)
+          : const Color(0x1F4CAF50); // green tint
+      textColor = isDark ? const Color(0xFFA5D6A7) : const Color(0xFF1B5E20);
+    } else if (line.startsWith('@@')) {
+      bg = isDark
+          ? const Color(0x221E88E5)
+          : const Color(0x111E88E5); // blue tint
+      textColor = isDark ? const Color(0xFF90CAF9) : const Color(0xFF1565C0);
+    } else {
+      bg = null;
+      textColor = Theme.of(context).colorScheme.onSurface;
+    }
+
+    return Container(
+      color: bg,
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 1),
+      child: Text(
+        line,
+        style: TextStyle(
+          fontFamily: 'monospace',
+          fontSize: 11.5,
+          height: 1.55,
+          color: textColor,
+        ),
+      ),
     );
   }
 }
