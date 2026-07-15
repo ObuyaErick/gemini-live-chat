@@ -71,10 +71,7 @@ class SessionsSidebar extends StatelessWidget {
                   tooltip: 'Refresh',
                   onPressed: provider.loadingSessions
                       ? null
-                      : () {
-                          final agentId = provider.currentAgentId;
-                          if (agentId != null) provider.loadSessions(agentId);
-                        },
+                      : provider.loadSessions,
                 ),
                 IconButton(
                   icon: const Icon(Icons.delete_sweep_rounded, size: 18),
@@ -87,7 +84,7 @@ class SessionsSidebar extends StatelessWidget {
                             builder: (ctx) => AlertDialog(
                               title: const Text('Clear all sessions?'),
                               content: const Text(
-                                'All sessions for this agent will be removed from the cache.',
+                                'All your sessions will be removed from the cache.',
                                 style: TextStyle(fontSize: 13),
                               ),
                               actions: [
@@ -166,10 +163,7 @@ class SessionsSidebar extends StatelessWidget {
             ),
             const SizedBox(height: 8),
             OutlinedButton(
-              onPressed: () {
-                final agentId = provider.currentAgentId;
-                if (agentId != null) provider.loadSessions(agentId);
-              },
+              onPressed: provider.loadSessions,
               child: const Text('Retry'),
             ),
           ],
@@ -253,6 +247,18 @@ class _SessionTile extends StatelessWidget {
                           color: const Color(0xFF1F2330),
                         ),
                       ),
+                      if (session.participantAgents.length > 1) ...[
+                        const SizedBox(height: 2),
+                        Text(
+                          session.participantAgents.join(' · '),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontSize: 10,
+                            color: Color(0xFF5B6396),
+                          ),
+                        ),
+                      ],
                       if (dateStr.isNotEmpty) ...[
                         const SizedBox(height: 3),
                         Text(

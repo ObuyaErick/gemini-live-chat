@@ -14,6 +14,7 @@ import 'package:webs/api/api_client.dart';
 import 'package:webs/live_chat/models.dart';
 import 'package:webs/live_chat/providers/live_chat_provider.dart';
 import 'package:webs/live_chat/widgets/action_confirmation_card.dart';
+import 'package:webs/live_chat/widgets/clarification_card.dart';
 import 'package:webs/live_chat/widgets/document_editor_panel.dart';
 import 'package:webs/live_chat/widgets/date_pill.dart';
 import 'package:webs/live_chat/widgets/empty_state.dart';
@@ -61,6 +62,9 @@ class _LiveChatState extends State<LiveChat> {
   // `_PendingAction` on ChatHandler: while set, the turn is parked until we
   // send back `action_confirm` or `action_cancel`.
   PendingAction? _pendingAction;
+
+  // A batched ASK_USER clarification awaiting the user's selections.
+  PendingClarification? _pendingClarification;
 
   // Files staged by the user via the attach button, sent with the next message.
   final List<LocalFileAttachment> _stagedFiles = [];
@@ -166,6 +170,7 @@ class _LiveChatState extends State<LiveChat> {
       _activeToolEvents.clear();
       _streamingMessage = null;
       _pendingAction = null;
+      _pendingClarification = null;
       _isWaitingForResponse = false;
       _isInLiveMode = false;
       _connectionError = null;
@@ -176,7 +181,7 @@ class _LiveChatState extends State<LiveChat> {
       _proposalFromVersions.clear();
     });
     _provider.clearCurrentSession();
-    _provider.loadSessions(agent.agentId);
+    _provider.loadSessions();
 
     _disconnect();
     _connect();
@@ -190,6 +195,7 @@ class _LiveChatState extends State<LiveChat> {
       _activeToolEvents.clear();
       _streamingMessage = null;
       _pendingAction = null;
+      _pendingClarification = null;
       _isWaitingForResponse = false;
       _isInLiveMode = false;
       _connectionError = null;
@@ -210,6 +216,7 @@ class _LiveChatState extends State<LiveChat> {
       _activeToolEvents.clear();
       _streamingMessage = null;
       _pendingAction = null;
+      _pendingClarification = null;
       _isWaitingForResponse = false;
       _isInLiveMode = false;
       _connectionError = null;
@@ -288,6 +295,7 @@ class _LiveChatState extends State<LiveChat> {
       _isInLiveMode = false;
       _streamingMessage = null;
       _pendingAction = null;
+      _pendingClarification = null;
       _activeToolEvents.clear();
       _openDocuments.clear();
       _activeDocumentFileId = null;
@@ -372,12 +380,14 @@ class _LiveChatState extends State<LiveChat> {
                       content: (e['text'] as String?) ?? '',
                       status: MessageStatus.complete,
                       attachments: _parseAttachments(e['attachments']),
+                      agentId: e['agent_id'] as String?,
                     );
                   }),
             );
           _streamingMessage = null;
           _activeToolEvents.clear();
           _pendingAction = null;
+      _pendingClarification = null;
           _isWaitingForResponse = false;
         });
         _scrollToBottom();
@@ -454,6 +464,39 @@ class _LiveChatState extends State<LiveChat> {
           );
         });
         _scrollToBottom();
+
+      case 'clarification':
+        final clarContent =
+            (payload['content'] as Map?)?.cast<String, dynamic>() ?? {};
+        final clarToolName =
+            (clarContent['tool_name'] as String?) ?? 'ASK_USER';
+        final rawQuestions = (clarContent['questions'] as List?) ?? const [];
+        setState(() {
+          _pendingClarification = PendingClarification(
+            toolName: clarToolName,
+            questions: rawQuestions
+                .whereType<Map>()
+                .map((q) =>
+                    ClarificationQuestion.fromJson(q.cast<String, dynamic>()))
+                .toList(),
+          );
+        });
+        _scrollToBottom();
+
+      case 'agent_switched':
+        final switchContent =
+            (payload['content'] as Map?)?.cast<String, dynamic>() ?? {};
+        final toAgentName = switchContent['agent_name'] as String?;
+        final toAgentId = switchContent['to_agent_id'] as String?;
+        final label = toAgentName ?? toAgentId;
+        if (label != null && mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Switched to $label'),
+              duration: const Duration(seconds: 3),
+            ),
+          );
+        }
 
       case 'navigate':
         final nav = (payload['content'] as Map?)?.cast<String, dynamic>() ?? {};
@@ -683,6 +726,7 @@ class _LiveChatState extends State<LiveChat> {
           _streamingMessage = null;
           _activeToolEvents.clear();
           _pendingAction = null;
+      _pendingClarification = null;
           _isWaitingForResponse = false;
           _isInLiveMode = false;
           _messages.add(
@@ -815,6 +859,21 @@ class _LiveChatState extends State<LiveChat> {
     }
   }
 
+  void _sendElicitResponse(String toolName, List<List<String>> answers) {
+    final channel = _channel;
+    if (channel == null || !_isConnected) return;
+    setState(() => _pendingClarification = null);
+    try {
+      channel.sink.add(
+        jsonEncode({
+          'type': 'elicit_response',
+          'tool_name': toolName,
+          'answers': answers,
+        }),
+      );
+    } catch (_) {}
+  }
+
   void _startLiveMode() {
     final channel = _channel;
     if (channel == null ||
@@ -870,7 +929,7 @@ class _LiveChatState extends State<LiveChat> {
       _pendingProposals.remove(fileId);
       _proposalFromVersions.remove(fileId);
     });
-    _sendDocumentEdit(fileId, diff, origin: 'agent');
+    // _sendDocumentEdit(fileId, diff, origin: 'agent');
   }
 
   void _rejectProposal(String fileId) {
@@ -1208,6 +1267,17 @@ class _LiveChatState extends State<LiveChat> {
               action: _pendingAction!,
               onConfirm: _confirmAction,
               onCancel: _cancelAction,
+            ),
+          ),
+        if (_pendingClarification != null)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(24, 8, 24, 0),
+            child: ClarificationCard(
+              clarification: _pendingClarification!,
+              onSubmit: (answers) => _sendElicitResponse(
+                _pendingClarification!.toolName,
+                answers,
+              ),
             ),
           ),
         InputBar(

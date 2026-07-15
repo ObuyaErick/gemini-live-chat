@@ -29,13 +29,14 @@ class LiveChatProvider extends ChangeNotifier {
   bool get loadingSessions => _loadingSessions;
   String? get sessionsError => _sessionsError;
 
-  Future<void> loadSessions(String agentId) async {
-    _currentAgentId = agentId;
+  Future<void> loadSessions([String? agentId]) async {
+    if (agentId != null) _currentAgentId = agentId;
     _loadingSessions = true;
     _sessionsError = null;
     notifyListeners();
     try {
-      final url = Uri.parse('${ApiClient.baseUrl}/agents/$agentId/threads');
+      // v12: /threads is not agent-scoped — returns all of the user's sessions.
+      final url = Uri.parse('${ApiClient.baseUrl}/threads');
       final res = await http.get(
         url,
         headers: {if (ApiClient.token != null) 'x-winp-token': ApiClient.token!},
@@ -81,18 +82,6 @@ class LiveChatProvider extends ChangeNotifier {
     );
     _sessions.remove(sessionId);
     if (_currentSessionId == sessionId) _currentSessionId = null;
-    notifyListeners();
-  }
-
-  Future<void> evictAgentSessions() async {
-    final agentId = _currentAgentId;
-    if (agentId == null) return;
-    await http.delete(
-      Uri.parse('${ApiClient.baseUrl}/agents/$agentId/sessions/evict'),
-      headers: {if (ApiClient.token != null) 'x-winp-token': ApiClient.token!},
-    );
-    _sessions.clear();
-    _currentSessionId = null;
     notifyListeners();
   }
 

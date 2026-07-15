@@ -30,6 +30,8 @@ class ChatMessage {
   List<Attachment> attachments;
   final List<LocalFileAttachment> localAttachments;
   final bool isTranscript;
+  // Which agent produced this message (shared-session threads).
+  final String? agentId;
 
   ChatMessage({
     required this.role,
@@ -41,6 +43,7 @@ class ChatMessage {
     this.attachments = const [],
     this.localAttachments = const [],
     this.isTranscript = false,
+    this.agentId,
   }) : createdAt = createdAt ?? DateTime.now();
 }
 
@@ -220,6 +223,50 @@ class PendingAction {
   }) : createdAt = createdAt ?? DateTime.now();
 }
 
+class ClarificationOption {
+  final String label;
+  final String? description;
+  const ClarificationOption({required this.label, this.description});
+
+  factory ClarificationOption.fromJson(Map<String, dynamic> json) =>
+      ClarificationOption(
+        label: (json['label'] as String?) ?? '',
+        description: json['description'] as String?,
+      );
+}
+
+class ClarificationQuestion {
+  final String question;
+  final List<ClarificationOption> options;
+  final bool multiSelect;
+
+  const ClarificationQuestion({
+    required this.question,
+    required this.options,
+    required this.multiSelect,
+  });
+
+  factory ClarificationQuestion.fromJson(Map<String, dynamic> json) =>
+      ClarificationQuestion(
+        question: (json['question'] as String?) ?? '',
+        options: (json['options'] as List? ?? [])
+            .whereType<Map>()
+            .map((o) => ClarificationOption.fromJson(o.cast()))
+            .toList(),
+        multiSelect: (json['multi_select'] as bool?) ?? false,
+      );
+}
+
+class PendingClarification {
+  final String toolName;
+  final List<ClarificationQuestion> questions;
+
+  const PendingClarification({
+    required this.toolName,
+    required this.questions,
+  });
+}
+
 class ChatContextSelection {
   final String type;
   final String id;
@@ -248,6 +295,8 @@ class ChatSession {
   final String? inputMode;
   final DateTime? createdAt;
   final String? preview;
+  // Every agent that produced a turn in this shared-session thread.
+  final List<String> participantAgents;
 
   const ChatSession({
     required this.sessionId,
@@ -259,6 +308,7 @@ class ChatSession {
     this.inputMode,
     this.createdAt,
     this.preview,
+    this.participantAgents = const [],
   });
 
   bool get isStandard => inputMode == null || inputMode == 'standard';
@@ -273,6 +323,7 @@ class ChatSession {
     String? inputMode,
     DateTime? createdAt,
     String? preview,
+    List<String>? participantAgents,
   }) {
     return ChatSession(
       sessionId: sessionId ?? this.sessionId,
@@ -284,6 +335,7 @@ class ChatSession {
       inputMode: inputMode ?? this.inputMode,
       createdAt: createdAt ?? this.createdAt,
       preview: preview ?? this.preview,
+      participantAgents: participantAgents ?? this.participantAgents,
     );
   }
 
@@ -311,6 +363,9 @@ class ChatSession {
       inputMode: json['input_mode'] as String?,
       createdAt: _parseDate(json['created_at']),
       preview: preview,
+      participantAgents: (json['participant_agents'] as List? ?? [])
+          .whereType<String>()
+          .toList(),
     );
   }
 
