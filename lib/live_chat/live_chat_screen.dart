@@ -179,19 +179,27 @@ class _LiveChatState extends State<LiveChat> {
                         ],
                       ),
                     )
-                  : ListView.builder(
+                  : SingleChildScrollView(
                       controller: _scrollController,
                       padding: const EdgeInsets.fromLTRB(24, 56, 24, 24),
-                      itemCount: _provider.messages.length,
-                      itemBuilder: (context, i) => Center(
-                        child: ConstrainedBox(
-                          constraints: const BoxConstraints(maxWidth: 760),
-                          child: MessageBubble(
-                            message: _provider.messages[i],
-                            agentName: agentName,
-                            formatTime: (dt) => dt.chatTime,
-                          ),
-                        ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          for (final message in _provider.messages)
+                            Center(
+                              child: ConstrainedBox(
+                                constraints: const BoxConstraints(
+                                  maxWidth: 760,
+                                ),
+                                child: MessageBubble(
+                                  message: message,
+                                  formatTime: (dt) => dt.chatTime,
+                                ),
+                              ),
+                            ),
+
+                          SizedBox(height: 16),
+                        ],
                       ),
                     ),
               Align(

@@ -321,6 +321,10 @@ class LiveChatProvider extends ChangeNotifier {
     _pendingAudioBytes.clear();
   }
 
+  /// Look up a known agent by id. Returns null for a null/unknown id — e.g. a
+  /// historical message whose producing agent is no longer in the roster.
+  Agent? agentById(String? id) => _agentById(id);
+
   Agent? _agentById(String? id) {
     if (id == null) return null;
     for (final a in _agents) {
@@ -411,6 +415,7 @@ class LiveChatProvider extends ChangeNotifier {
         role: MessageRole.user,
         content: trimmed,
         localAttachments: files,
+        agentId: _selectedAgent?.agentId,
       ),
     );
     _isWaitingForResponse = true;

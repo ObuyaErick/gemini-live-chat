@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_markdown/flutter_markdown.dart'; // MarkdownStyleSheet passed into ChartMessageContent
+import 'package:provider/provider.dart';
 import 'package:webs/live_chat/models.dart';
+import 'package:webs/live_chat/providers/live_chat_provider.dart';
 import 'package:webs/live_chat/widgets/attachments_view.dart';
 import 'package:webs/live_chat/widgets/avatar.dart';
 import 'package:webs/live_chat/widgets/chart_message_content.dart';
@@ -11,13 +13,11 @@ import 'package:webs/ui/core/horizontal_layout_breakpoints.dart';
 
 class MessageBubble extends StatelessWidget {
   final ChatMessage message;
-  final String agentName;
   final String Function(DateTime) formatTime;
 
   const MessageBubble({
     super.key,
     required this.message,
-    required this.agentName,
     required this.formatTime,
   });
 
@@ -250,120 +250,132 @@ class MessageBubble extends StatelessWidget {
     final textColor = t.text1;
     final canCopy = !isStreaming && message.content.isNotEmpty;
 
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 12),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Avatar(icon: Icons.auto_awesome_rounded),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Padding(
-                  padding: const EdgeInsets.only(top: 4, bottom: 6),
-                  child: Text(
-                    agentName,
-                    style: TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
-                      color: t.text1,
+    return Consumer<LiveChatProvider>(
+      builder: (context, provider, _) {
+        final agent = provider.agentById(message.agentId);
+        final displayName =
+            agent?.agentName ??
+            provider.selectedAgent?.agentName ??
+            'Assistant';
+        return Padding(
+          padding: const EdgeInsets.symmetric(vertical: 12),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Avatar(
+                imageUrl: agent?.agentImageUrl,
+                icon: Icons.auto_awesome_rounded,
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.only(top: 4, bottom: 6),
+                      child: Text(
+                        displayName,
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          color: t.text1,
+                        ),
+                      ),
                     ),
-                  ),
+                    if (message.imageBytes != null)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 10),
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(12),
+                          child: Image.memory(
+                            message.imageBytes!,
+                            fit: BoxFit.contain,
+                          ),
+                        ),
+                      ),
+                    if (message.content.isNotEmpty)
+                      ChartMessageContent(
+                        content: message.content,
+                        attachments: message.attachments,
+                        styleSheet: MarkdownStyleSheet(
+                          p: TextStyle(
+                            fontSize: 14.5,
+                            color: textColor,
+                            height: 1.62,
+                          ),
+                          code: AppTheme.mono(
+                            size: 13,
+                            weight: FontWeight.w400,
+                            color: textColor,
+                          ).copyWith(backgroundColor: t.bg3),
+                          codeblockPadding: const EdgeInsets.all(14),
+                          codeblockDecoration: BoxDecoration(
+                            color: t.bg2,
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: t.border),
+                          ),
+                          blockquoteDecoration: BoxDecoration(
+                            border: Border(
+                              left: BorderSide(color: t.accentBorder, width: 3),
+                            ),
+                          ),
+                          blockquotePadding: const EdgeInsets.only(left: 12),
+                          h1: TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.w600,
+                            color: textColor,
+                          ),
+                          h2: TextStyle(
+                            fontSize: 17,
+                            fontWeight: FontWeight.w600,
+                            color: textColor,
+                          ),
+                          h3: TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w600,
+                            color: textColor,
+                          ),
+                          listBullet: TextStyle(
+                            fontSize: 14.5,
+                            color: textColor,
+                            height: 1.62,
+                          ),
+                          strong: TextStyle(
+                            fontWeight: FontWeight.w700,
+                            color: textColor,
+                          ),
+                          em: TextStyle(
+                            fontStyle: FontStyle.italic,
+                            color: textColor,
+                          ),
+                          a: TextStyle(color: t.accent),
+                        ),
+                      ),
+                    if (isStreaming)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 6),
+                        child: CursorBlink(color: t.accent),
+                      ),
+                    if (canCopy)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 8),
+                        child: Row(
+                          children: [
+                            _GhostButton(
+                              label: 'Copy',
+                              icon: Icons.copy_rounded,
+                              onTap: copyToClipboard,
+                            ),
+                          ],
+                        ),
+                      ),
+                  ],
                 ),
-                if (message.imageBytes != null)
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 10),
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(12),
-                      child: Image.memory(
-                        message.imageBytes!,
-                        fit: BoxFit.contain,
-                      ),
-                    ),
-                  ),
-                if (message.content.isNotEmpty)
-                  ChartMessageContent(
-                    content: message.content,
-                    attachments: message.attachments,
-                    styleSheet: MarkdownStyleSheet(
-                      p: TextStyle(
-                        fontSize: 14.5,
-                        color: textColor,
-                        height: 1.62,
-                      ),
-                      code: AppTheme.mono(
-                        size: 13,
-                        weight: FontWeight.w400,
-                        color: textColor,
-                      ).copyWith(backgroundColor: t.bg3),
-                      codeblockPadding: const EdgeInsets.all(14),
-                      codeblockDecoration: BoxDecoration(
-                        color: t.bg2,
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: t.border),
-                      ),
-                      blockquoteDecoration: BoxDecoration(
-                        border: Border(
-                          left: BorderSide(color: t.accentBorder, width: 3),
-                        ),
-                      ),
-                      blockquotePadding: const EdgeInsets.only(left: 12),
-                      h1: TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.w600,
-                        color: textColor,
-                      ),
-                      h2: TextStyle(
-                        fontSize: 17,
-                        fontWeight: FontWeight.w600,
-                        color: textColor,
-                      ),
-                      h3: TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w600,
-                        color: textColor,
-                      ),
-                      listBullet: TextStyle(
-                        fontSize: 14.5,
-                        color: textColor,
-                        height: 1.62,
-                      ),
-                      strong: TextStyle(
-                        fontWeight: FontWeight.w700,
-                        color: textColor,
-                      ),
-                      em: TextStyle(
-                        fontStyle: FontStyle.italic,
-                        color: textColor,
-                      ),
-                      a: TextStyle(color: t.accent),
-                    ),
-                  ),
-                if (isStreaming)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 6),
-                    child: CursorBlink(color: t.accent),
-                  ),
-                if (canCopy)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 8),
-                    child: Row(
-                      children: [
-                        _GhostButton(
-                          label: 'Copy',
-                          icon: Icons.copy_rounded,
-                          onTap: copyToClipboard,
-                        ),
-                      ],
-                    ),
-                  ),
-              ],
-            ),
+              ),
+            ],
           ),
-        ],
-      ),
+        );
+      },
     );
   }
 }

@@ -1,7 +1,14 @@
 import 'package:flutter/material.dart';
+import 'package:webs/live_chat/widgets/avatar.dart';
 import 'package:webs/models/agent_models.dart';
 import 'package:webs/ui/core/app_theme.dart';
 import 'package:webs/ui/core/theme_controller.dart';
+
+/// The uppercased first letter of an agent name, used as the avatar fallback.
+String _initialOf(String? name) {
+  final n = name?.trim() ?? '';
+  return n.isEmpty ? 'A' : n.characters.first.toUpperCase();
+}
 
 class LiveChatAppBar extends StatelessWidget implements PreferredSizeWidget {
   final bool isConnected;
@@ -25,11 +32,6 @@ class LiveChatAppBar extends StatelessWidget implements PreferredSizeWidget {
 
   @override
   Size get preferredSize => const Size.fromHeight(65);
-
-  String _initial(Agent? a) {
-    final n = a?.agentName.trim() ?? '';
-    return n.isEmpty ? 'A' : n.characters.first.toUpperCase();
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -56,7 +58,6 @@ class LiveChatAppBar extends StatelessWidget implements PreferredSizeWidget {
           agents: agents,
           selectedAgent: selectedAgent,
           onSelectAgent: onSelectAgent,
-          initial: _initial(selectedAgent),
         ),
       ),
       actions: [
@@ -85,13 +86,11 @@ class _AgentSwitcher extends StatelessWidget {
   final List<Agent> agents;
   final Agent? selectedAgent;
   final ValueChanged<Agent> onSelectAgent;
-  final String initial;
 
   const _AgentSwitcher({
     required this.agents,
     required this.selectedAgent,
     required this.onSelectAgent,
-    required this.initial,
   });
 
   @override
@@ -113,24 +112,10 @@ class _AgentSwitcher extends StatelessWidget {
             value: a,
             child: Row(
               children: [
-                Container(
-                  width: 30,
-                  height: 30,
-                  decoration: BoxDecoration(
-                    gradient: t.accentGradient,
-                    shape: BoxShape.circle,
-                  ),
-                  alignment: Alignment.center,
-                  child: Text(
-                    a.agentName.trim().isEmpty
-                        ? 'A'
-                        : a.agentName.trim().characters.first.toUpperCase(),
-                    style: TextStyle(
-                      color: t.onAccent,
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
+                Avatar(
+                  size: 30,
+                  imageUrl: a.agentImageUrl,
+                  label: _initialOf(a.agentName),
                 ),
                 const SizedBox(width: 12),
                 Expanded(
@@ -161,22 +146,10 @@ class _AgentSwitcher extends StatelessWidget {
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Container(
-              width: 28,
-              height: 28,
-              decoration: BoxDecoration(
-                gradient: t.accentGradient,
-                shape: BoxShape.circle,
-              ),
-              alignment: Alignment.center,
-              child: Text(
-                initial,
-                style: TextStyle(
-                  color: t.onAccent,
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
+            Avatar(
+              size: 28,
+              imageUrl: selectedAgent?.agentImageUrl,
+              label: _initialOf(selectedAgent?.agentName),
             ),
             const SizedBox(width: 10),
             Column(
