@@ -67,6 +67,9 @@ enum AgentStatus {
   comingSoon,
   @JsonValue('disabled')
   disabled,
+
+  /// Fallback for any status the server introduces that we don't model yet.
+  unknown,
 }
 
 enum AgentToolType {
@@ -78,6 +81,19 @@ enum AgentToolType {
   codeExecution,
   @JsonValue('action')
   action,
+  @JsonValue('elicit')
+  elicit,
+  @JsonValue('text_create')
+  textCreate,
+  @JsonValue('text_edit')
+  textEdit,
+  @JsonValue('chart_execution')
+  chartExecution,
+  @JsonValue('malloy_compile')
+  malloyCompile,
+
+  /// Fallback for any tool type the server introduces that we don't model yet.
+  unknown,
 }
 
 @freezed
@@ -86,7 +102,9 @@ sealed class SuggestedQuestion with _$SuggestedQuestion {
     required String category,
     required String icon,
     @JsonKey(name: 'question_text') required String questionText,
-    @FlexibleIntConverter() @JsonKey(name: 'display_order') required int displayOrder,
+    @FlexibleIntConverter()
+    @JsonKey(name: 'display_order')
+    required int displayOrder,
   }) = _SuggestedQuestion;
 
   factory SuggestedQuestion.fromJson(Map<String, dynamic> json) =>
@@ -99,7 +117,8 @@ sealed class AgentTool with _$AgentTool {
     @JsonKey(name: 'tool_id') required String toolId,
     @JsonKey(name: 'tool_name') required String toolName,
     @JsonKey(name: 'tool_description') required String toolDescription,
-    @JsonKey(name: 'tool_type') required AgentToolType toolType,
+    @JsonKey(name: 'tool_type', unknownEnumValue: AgentToolType.unknown)
+    required AgentToolType toolType,
 
     /// Often a stringified JSON schema in your current data.
     @JsonKey(name: 'tool_parameters') String? toolParameters,
@@ -142,7 +161,8 @@ sealed class Agent with _$Agent {
     @JsonKey(name: 'agent_id') required String agentId,
     @Default(<String>[]) List<String> accounts,
     @FlexibleBoolConverter() @JsonKey(name: 'is_global') required bool isGlobal,
-    @JsonKey(name: 'status') required AgentStatus status,
+    @JsonKey(name: 'status', unknownEnumValue: AgentStatus.unknown)
+    required AgentStatus status,
     @JsonKey(name: 'agent_name') required String agentName,
     @JsonKey(name: 'agent_subtitle') String? agentSubtitle,
     @JsonKey(name: 'agent_description') String? agentDescription,
@@ -151,7 +171,9 @@ sealed class Agent with _$Agent {
     @JsonKey(name: 'agent_instructions') String? agentInstructions,
     @JsonKey(name: 'agent_welcome_message') String? agentWelcomeMessage,
     @JsonKey(name: 'model_id') String? modelId,
-    @FlexibleDoubleConverter() @JsonKey(name: 'temperature') double? temperature,
+    @FlexibleDoubleConverter()
+    @JsonKey(name: 'temperature')
+    double? temperature,
     @FlexibleIntConverter() @JsonKey(name: 'display_order') int? displayOrder,
     @JsonKey(name: 'suggested_questions')
     @Default(<SuggestedQuestion>[])
@@ -164,4 +186,3 @@ sealed class Agent with _$Agent {
 
   factory Agent.fromJson(Map<String, dynamic> json) => _$AgentFromJson(json);
 }
-

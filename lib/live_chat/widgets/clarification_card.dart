@@ -92,8 +92,7 @@ class _ClarificationCardState extends State<ClarificationCard> {
             _QuestionBlock(
               question: questions[i],
               selections: _selections[i],
-              onToggle: (label) =>
-                  _toggle(i, label, questions[i].multiSelect),
+              onToggle: (label) => _toggle(i, label, questions[i].multiSelect),
             ),
           ],
           const SizedBox(height: 18),

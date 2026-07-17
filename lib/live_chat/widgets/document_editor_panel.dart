@@ -12,10 +12,12 @@ class DocumentEditorPanel extends StatefulWidget {
   final String? activeFileId;
   final void Function(String fileId) onSelectDocument;
   final void Function(String fileId) onClose;
+
   /// Called on unfocus when the user has edited the document. The parent
   /// should send a `document_edit` frame and advance the local doc version.
   /// [newText] is the full committed text so the parent can call resetFromResync.
   final void Function(String fileId, String diff, String newText) onUserEdit;
+
   /// Pending AI-proposed diffs awaiting user accept/reject. Keyed by file_id.
   final Map<String, String> pendingProposals;
   final void Function(String fileId) onAcceptProposal;
@@ -124,8 +126,9 @@ class _DocumentEditorPanelState extends State<DocumentEditorPanel> {
     final activeId = widget.activeFileId;
     final activeDoc = activeId != null ? docs[activeId] : null;
     final activeController = activeId != null ? _controllers[activeId] : null;
-    final pendingDiff =
-        activeId != null ? widget.pendingProposals[activeId] : null;
+    final pendingDiff = activeId != null
+        ? widget.pendingProposals[activeId]
+        : null;
 
     final t = context.tokens;
     return Container(
@@ -203,7 +206,9 @@ class _DocumentEditorPanelState extends State<DocumentEditorPanel> {
                     padding: const EdgeInsets.all(16),
                     child: TextField(
                       controller: activeController,
-                      focusNode: activeId != null ? _focusNodes[activeId] : null,
+                      focusNode: activeId != null
+                          ? _focusNodes[activeId]
+                          : null,
                       maxLines: null,
                       expands: true,
                       textAlignVertical: TextAlignVertical.top,
@@ -295,7 +300,10 @@ class _VersionBadge extends StatelessWidget {
         color: t.bg3,
         borderRadius: BorderRadius.circular(999),
       ),
-      child: Text('v$version', style: AppTheme.mono(size: 10.5, color: t.text3)),
+      child: Text(
+        'v$version',
+        style: AppTheme.mono(size: 10.5, color: t.text3),
+      ),
     );
   }
 }
@@ -334,8 +342,12 @@ class _ProposalBanner extends StatelessWidget {
   Widget build(BuildContext context) {
     final t = context.tokens;
     final lines = diff.split('\n');
-    final adds = lines.where((l) => l.startsWith('+') && !l.startsWith('+++')).length;
-    final dels = lines.where((l) => l.startsWith('-') && !l.startsWith('---')).length;
+    final adds = lines
+        .where((l) => l.startsWith('+') && !l.startsWith('+++'))
+        .length;
+    final dels = lines
+        .where((l) => l.startsWith('-') && !l.startsWith('---'))
+        .length;
 
     return Container(
       decoration: BoxDecoration(
@@ -421,9 +433,7 @@ class _ProposalBanner extends StatelessWidget {
             child: SingleChildScrollView(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  for (final line in lines) _DiffLine(line: line),
-                ],
+                children: [for (final line in lines) _DiffLine(line: line)],
               ),
             ),
           ),

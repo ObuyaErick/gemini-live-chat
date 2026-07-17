@@ -43,10 +43,7 @@ class ToolCallChip extends StatelessWidget {
                 ),
               ),
             const SizedBox(width: 8),
-            Text(
-              pending.name,
-              style: AppTheme.mono(size: 12, color: t.text2),
-            ),
+            Text(pending.name, style: AppTheme.mono(size: 12, color: t.text2)),
             const SizedBox(width: 8),
             Text(
               isDone ? 'done' : 'running…',

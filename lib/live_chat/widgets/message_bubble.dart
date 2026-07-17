@@ -420,10 +420,7 @@ class _GhostButton extends StatelessWidget {
             children: [
               Icon(icon, size: 13, color: t.text3),
               const SizedBox(width: 6),
-              Text(
-                label,
-                style: TextStyle(fontSize: 12, color: t.text3),
-              ),
+              Text(label, style: TextStyle(fontSize: 12, color: t.text3)),
             ],
           ),
         ),

@@ -29,7 +29,11 @@ _AgentTool _$AgentToolFromJson(Map<String, dynamic> json) => _AgentTool(
   toolId: json['tool_id'] as String,
   toolName: json['tool_name'] as String,
   toolDescription: json['tool_description'] as String,
-  toolType: $enumDecode(_$AgentToolTypeEnumMap, json['tool_type']),
+  toolType: $enumDecode(
+    _$AgentToolTypeEnumMap,
+    json['tool_type'],
+    unknownValue: AgentToolType.unknown,
+  ),
   toolParameters: json['tool_parameters'] as String?,
   toolQueryTemplate: json['tool_query_template'] as String?,
   toolPythonCode: json['tool_python_code'] as String?,
@@ -68,6 +72,12 @@ const _$AgentToolTypeEnumMap = {
   AgentToolType.python: 'python',
   AgentToolType.codeExecution: 'code_execution',
   AgentToolType.action: 'action',
+  AgentToolType.elicit: 'elicit',
+  AgentToolType.textCreate: 'text_create',
+  AgentToolType.textEdit: 'text_edit',
+  AgentToolType.chartExecution: 'chart_execution',
+  AgentToolType.malloyCompile: 'malloy_compile',
+  AgentToolType.unknown: 'unknown',
 };
 
 Json? _$JsonConverterToJson<Json, Value>(
@@ -96,7 +106,11 @@ _Agent _$AgentFromJson(Map<String, dynamic> json) => _Agent(
       (json['accounts'] as List<dynamic>?)?.map((e) => e as String).toList() ??
       const <String>[],
   isGlobal: const FlexibleBoolConverter().fromJson(json['is_global']),
-  status: $enumDecode(_$AgentStatusEnumMap, json['status']),
+  status: $enumDecode(
+    _$AgentStatusEnumMap,
+    json['status'],
+    unknownValue: AgentStatus.unknown,
+  ),
   agentName: json['agent_name'] as String,
   agentSubtitle: json['agent_subtitle'] as String?,
   agentDescription: json['agent_description'] as String?,
@@ -154,4 +168,5 @@ const _$AgentStatusEnumMap = {
   AgentStatus.active: 'active',
   AgentStatus.comingSoon: 'coming_soon',
   AgentStatus.disabled: 'disabled',
+  AgentStatus.unknown: 'unknown',
 };

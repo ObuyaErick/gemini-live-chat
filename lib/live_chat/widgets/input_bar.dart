@@ -62,8 +62,9 @@ class InputBar extends StatelessWidget {
                         _StagedChip(
                           filename: f.filename,
                           size: _formatSize(f.sizeBytes),
-                          onRemove:
-                              enabled ? () => onRemoveStagedFile(f) : null,
+                          onRemove: enabled
+                              ? () => onRemoveStagedFile(f)
+                              : null,
                         ),
                     ],
                   ),
@@ -122,8 +123,9 @@ class InputBar extends StatelessWidget {
                         onTap: (enabled || isInLiveMode)
                             ? onToggleLiveMode
                             : null,
-                        tooltip:
-                            isInLiveMode ? 'End voice mode' : 'Enter voice mode',
+                        tooltip: isInLiveMode
+                            ? 'End voice mode'
+                            : 'Enter voice mode',
                         color: isInLiveMode ? t.danger : null,
                       ),
                       const SizedBox(width: 4),
@@ -180,11 +182,7 @@ class _CircleIcon extends StatelessWidget {
         fixedSize: const Size(36, 36),
         padding: EdgeInsets.zero,
       ),
-      icon: Icon(
-        icon,
-        size: 18,
-        color: color ?? (enabled ? t.text2 : t.text3),
-      ),
+      icon: Icon(icon, size: 18, color: color ?? (enabled ? t.text2 : t.text3)),
     );
   }
 }

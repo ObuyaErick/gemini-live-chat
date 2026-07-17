@@ -80,7 +80,11 @@ class SessionsSidebar extends StatelessWidget {
                       : provider.loadSessions,
                 ),
                 IconButton(
-                  icon: Icon(Icons.delete_sweep_rounded, size: 18, color: t.text2),
+                  icon: Icon(
+                    Icons.delete_sweep_rounded,
+                    size: 18,
+                    color: t.text2,
+                  ),
                   tooltip: 'Clear all sessions',
                   onPressed: provider.sessions.isEmpty
                       ? null
@@ -112,7 +116,11 @@ class SessionsSidebar extends StatelessWidget {
                         },
                 ),
                 IconButton(
-                  icon: Icon(Icons.chevron_left_rounded, size: 20, color: t.text2),
+                  icon: Icon(
+                    Icons.chevron_left_rounded,
+                    size: 20,
+                    color: t.text2,
+                  ),
                   tooltip: 'Collapse',
                   onPressed: onToggle,
                 ),
@@ -260,8 +268,9 @@ class _SessionTile extends StatelessWidget {
                         style: TextStyle(
                           fontSize: 13,
                           height: 1.3,
-                          fontWeight:
-                              selected ? FontWeight.w600 : FontWeight.w500,
+                          fontWeight: selected
+                              ? FontWeight.w600
+                              : FontWeight.w500,
                           color: t.text1,
                         ),
                       ),
@@ -269,9 +278,11 @@ class _SessionTile extends StatelessWidget {
                         const SizedBox(height: 6),
                         Row(
                           children: [
-                            for (int i = 0;
-                                i < session.participantAgents.length && i < 3;
-                                i++)
+                            for (
+                              int i = 0;
+                              i < session.participantAgents.length && i < 3;
+                              i++
+                            )
                               Align(
                                 widthFactor: i == 0 ? 1 : 0.62,
                                 child: Container(
@@ -284,7 +295,10 @@ class _SessionTile extends StatelessWidget {
                                   ),
                                   alignment: Alignment.center,
                                   child: Text(
-                                    session.participantAgents[i].characters.first
+                                    session
+                                        .participantAgents[i]
+                                        .characters
+                                        .first
                                         .toUpperCase(),
                                     style: TextStyle(
                                       fontSize: 8,

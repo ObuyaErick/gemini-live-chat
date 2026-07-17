@@ -114,8 +114,11 @@ class _PlotlyChartState extends State<PlotlyChart> {
             ),
             child: Row(
               children: [
-                Icon(Icons.insert_chart_outlined_rounded,
-                    size: 15, color: t.accent),
+                Icon(
+                  Icons.insert_chart_outlined_rounded,
+                  size: 15,
+                  color: t.accent,
+                ),
                 const SizedBox(width: 8),
                 Text(
                   'Chart',
@@ -127,8 +130,10 @@ class _PlotlyChartState extends State<PlotlyChart> {
                 ),
                 const SizedBox(width: 8),
                 Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 7,
+                    vertical: 2,
+                  ),
                   decoration: BoxDecoration(
                     color: t.bg3,
                     borderRadius: BorderRadius.circular(999),
