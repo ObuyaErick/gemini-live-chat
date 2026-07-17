@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:webview_flutter/webview_flutter.dart';
+import 'package:webs/ui/core/app_theme.dart';
 
 class PlotlyChart extends StatefulWidget {
   final String url;
@@ -93,40 +94,92 @@ class _PlotlyChartState extends State<PlotlyChart> {
 
   @override
   Widget build(BuildContext context) {
+    final t = context.tokens;
     return Container(
-      height: widget.height,
       decoration: BoxDecoration(
-        color: Colors.white,
-        border: Border.all(color: const Color(0xFFE9EAF0)),
-        borderRadius: BorderRadius.circular(8),
+        color: t.surface,
+        border: Border.all(color: t.border),
+        borderRadius: BorderRadius.circular(14),
+        boxShadow: t.e1,
       ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(8),
-        child: _error != null
-            ? Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Text(
-                    _error!,
-                    style: const TextStyle(
-                      fontSize: 12,
-                      color: Color(0xFFB42318),
-                    ),
-                    textAlign: TextAlign.center,
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+            decoration: BoxDecoration(
+              border: Border(bottom: BorderSide(color: t.border)),
+            ),
+            child: Row(
+              children: [
+                Icon(Icons.insert_chart_outlined_rounded,
+                    size: 15, color: t.accent),
+                const SizedBox(width: 8),
+                Text(
+                  'Chart',
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: t.text1,
                   ),
-                  const SizedBox(height: 8),
-                  ElevatedButton(onPressed: _load, child: const Text('Retry')),
-                ],
-              )
-            : _controller == null
-            ? const Center(
-                child: SizedBox(
-                  width: 20,
-                  height: 20,
-                  child: CircularProgressIndicator(strokeWidth: 2),
                 ),
-              )
-            : WebViewWidget(controller: _controller!),
+                const SizedBox(width: 8),
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: t.bg3,
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                  child: Text(
+                    'Plotly',
+                    style: AppTheme.mono(size: 10, color: t.text3),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          SizedBox(
+            height: widget.height,
+            child: _error != null
+                ? Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Text(
+                          _error!,
+                          style: TextStyle(fontSize: 12, color: t.danger),
+                          textAlign: TextAlign.center,
+                        ),
+                        const SizedBox(height: 8),
+                        FilledButton(
+                          onPressed: _load,
+                          style: FilledButton.styleFrom(
+                            backgroundColor: t.accent,
+                            foregroundColor: t.onAccent,
+                            elevation: 0,
+                          ),
+                          child: const Text('Retry'),
+                        ),
+                      ],
+                    ),
+                  )
+                : _controller == null
+                ? Center(
+                    child: SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: t.accent,
+                      ),
+                    ),
+                  )
+                : WebViewWidget(controller: _controller!),
+          ),
+        ],
       ),
     );
   }

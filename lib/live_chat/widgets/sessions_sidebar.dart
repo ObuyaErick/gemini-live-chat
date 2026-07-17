@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import 'package:webs/extensions/date_time_extensions.dart';
 import 'package:webs/live_chat/models.dart';
 import 'package:webs/live_chat/providers/live_chat_provider.dart';
+import 'package:webs/ui/core/app_theme.dart';
 
 class SessionsSidebar extends StatelessWidget {
   final ValueChanged<ChatSession> onSelectSession;
@@ -43,38 +44,43 @@ class SessionsSidebar extends StatelessWidget {
 
   Widget _buildContent(BuildContext context) {
     final provider = context.watch<LiveChatProvider>();
+    final t = context.tokens;
     return Container(
-      decoration: const BoxDecoration(
-        color: Colors.white,
-        border: Border(right: BorderSide(color: Color(0xFFE9EAF0))),
+      decoration: BoxDecoration(
+        color: t.bg2,
+        border: Border(right: BorderSide(color: t.border)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Container(
-            height: 72,
+            height: 64,
             padding: const EdgeInsets.symmetric(horizontal: 12),
-            decoration: const BoxDecoration(
-              border: Border(bottom: BorderSide(color: Color(0xFFE9EAF0))),
+            decoration: BoxDecoration(
+              border: Border(bottom: BorderSide(color: t.border)),
             ),
             child: Row(
               children: [
                 const SizedBox(width: 4),
-                const Expanded(
+                Expanded(
                   child: Text(
-                    'Previous sessions',
-                    style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+                    'Conversations',
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      color: t.text1,
+                    ),
                   ),
                 ),
                 IconButton(
-                  icon: const Icon(Icons.refresh_rounded, size: 18),
+                  icon: Icon(Icons.refresh_rounded, size: 18, color: t.text2),
                   tooltip: 'Refresh',
                   onPressed: provider.loadingSessions
                       ? null
                       : provider.loadSessions,
                 ),
                 IconButton(
-                  icon: const Icon(Icons.delete_sweep_rounded, size: 18),
+                  icon: Icon(Icons.delete_sweep_rounded, size: 18, color: t.text2),
                   tooltip: 'Clear all sessions',
                   onPressed: provider.sessions.isEmpty
                       ? null
@@ -106,7 +112,7 @@ class SessionsSidebar extends StatelessWidget {
                         },
                 ),
                 IconButton(
-                  icon: const Icon(Icons.chevron_left_rounded, size: 20),
+                  icon: Icon(Icons.chevron_left_rounded, size: 20, color: t.text2),
                   tooltip: 'Collapse',
                   onPressed: onToggle,
                 ),
@@ -114,18 +120,22 @@ class SessionsSidebar extends StatelessWidget {
             ),
           ),
           Padding(
-            padding: const EdgeInsets.fromLTRB(12, 12, 12, 4),
+            padding: const EdgeInsets.fromLTRB(12, 14, 12, 6),
             child: SizedBox(
               width: double.infinity,
-              child: OutlinedButton.icon(
+              child: FilledButton.icon(
                 icon: const Icon(Icons.add_rounded, size: 18),
-                label: const Text('New session'),
-                style: OutlinedButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(vertical: 10),
-                  side: const BorderSide(color: Color(0xFFE3E5EE)),
-                  foregroundColor: const Color(0xFF1F2330),
+                label: const Text('New chat'),
+                style: FilledButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  backgroundColor: t.accent,
+                  foregroundColor: t.onAccent,
+                  elevation: 0,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10),
+                  ),
                   textStyle: const TextStyle(
-                    fontSize: 13,
+                    fontSize: 13.5,
                     fontWeight: FontWeight.w600,
                   ),
                 ),
@@ -216,19 +226,27 @@ class _SessionTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final t = context.tokens;
     final dateStr = session.createdAt != null
         ? session.createdAt!.formatToString(format: "MMM d, hh:mm a")
         : '';
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 8),
       child: Material(
-        color: selected ? const Color(0xFFEEF1FF) : Colors.transparent,
-        borderRadius: BorderRadius.circular(8),
+        color: selected ? t.accentSoft : Colors.transparent,
+        borderRadius: BorderRadius.circular(10),
         child: InkWell(
-          borderRadius: BorderRadius.circular(8),
+          borderRadius: BorderRadius.circular(10),
+          hoverColor: t.bg3,
           onTap: onTap,
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(12, 8, 4, 8),
+          child: Container(
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(
+                color: selected ? t.accentBorder : Colors.transparent,
+              ),
+            ),
+            padding: const EdgeInsets.fromLTRB(12, 9, 4, 9),
             child: Row(
               children: [
                 Expanded(
@@ -244,29 +262,51 @@ class _SessionTile extends StatelessWidget {
                           height: 1.3,
                           fontWeight:
                               selected ? FontWeight.w600 : FontWeight.w500,
-                          color: const Color(0xFF1F2330),
+                          color: t.text1,
                         ),
                       ),
                       if (session.participantAgents.length > 1) ...[
-                        const SizedBox(height: 2),
-                        Text(
-                          session.participantAgents.join(' · '),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            fontSize: 10,
-                            color: Color(0xFF5B6396),
-                          ),
+                        const SizedBox(height: 6),
+                        Row(
+                          children: [
+                            for (int i = 0;
+                                i < session.participantAgents.length && i < 3;
+                                i++)
+                              Align(
+                                widthFactor: i == 0 ? 1 : 0.62,
+                                child: Container(
+                                  width: 18,
+                                  height: 18,
+                                  decoration: BoxDecoration(
+                                    gradient: t.accentGradient,
+                                    shape: BoxShape.circle,
+                                    border: Border.all(color: t.bg2, width: 2),
+                                  ),
+                                  alignment: Alignment.center,
+                                  child: Text(
+                                    session.participantAgents[i].characters.first
+                                        .toUpperCase(),
+                                    style: TextStyle(
+                                      fontSize: 8,
+                                      fontWeight: FontWeight.w600,
+                                      color: t.onAccent,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            const SizedBox(width: 6),
+                            Text(
+                              'shared',
+                              style: TextStyle(fontSize: 10.5, color: t.text3),
+                            ),
+                          ],
                         ),
                       ],
                       if (dateStr.isNotEmpty) ...[
-                        const SizedBox(height: 3),
+                        const SizedBox(height: 4),
                         Text(
                           dateStr,
-                          style: const TextStyle(
-                            fontSize: 11,
-                            color: Color(0xFF747787),
-                          ),
+                          style: TextStyle(fontSize: 11, color: t.text3),
                         ),
                       ],
                     ],
@@ -309,7 +349,7 @@ class _SessionTile extends StatelessWidget {
                   visualDensity: VisualDensity.compact,
                   padding: const EdgeInsets.all(6),
                   constraints: const BoxConstraints(),
-                  color: const Color(0xFFADB5BD),
+                  color: t.text3,
                   tooltip: 'Delete session',
                 ),
               ],

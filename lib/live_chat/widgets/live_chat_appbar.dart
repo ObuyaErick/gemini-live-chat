@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
-import 'package:webs/live_chat/providers/live_chat_provider.dart';
 import 'package:webs/models/agent_models.dart';
+import 'package:webs/ui/core/app_theme.dart';
+import 'package:webs/ui/core/theme_controller.dart';
 
 class LiveChatAppBar extends StatelessWidget implements PreferredSizeWidget {
   final bool isConnected;
@@ -24,116 +24,230 @@ class LiveChatAppBar extends StatelessWidget implements PreferredSizeWidget {
   });
 
   @override
-  Size get preferredSize => const Size.fromHeight(73);
+  Size get preferredSize => const Size.fromHeight(65);
+
+  String _initial(Agent? a) {
+    final n = a?.agentName.trim() ?? '';
+    return n.isEmpty ? 'A' : n.characters.first.toUpperCase();
+  }
 
   @override
   Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
+    final t = context.tokens;
+    final dark = ThemeController.isDark(context);
     return AppBar(
-      toolbarHeight: 72,
-      backgroundColor: Colors.white,
-      surfaceTintColor: Colors.white,
+      toolbarHeight: 64,
+      backgroundColor: t.bgApp,
+      surfaceTintColor: Colors.transparent,
       elevation: 0,
       titleSpacing: 4,
+      leadingWidth: 52,
       leading: IconButton(
         icon: Icon(
           isSidebarOpen ? Icons.menu_open_rounded : Icons.menu_rounded,
+          color: t.text2,
         ),
         tooltip: isSidebarOpen ? 'Hide sessions' : 'Show sessions',
         onPressed: onToggleSidebar,
       ),
-      title: Row(
-        children: [
-          Container(
-            width: 10,
-            height: 10,
-            decoration: const BoxDecoration(
-              shape: BoxShape.circle,
-              color: Color(0xFFFFD6C9),
-            ),
-          ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                DropdownButtonHideUnderline(
-                  child: DropdownButton<Agent>(
-                    value: selectedAgent,
-                    isExpanded: true,
-                    icon: const Icon(Icons.keyboard_arrow_down_rounded),
-                    onChanged: (a) {
-                      if (a == null) return;
-                      onSelectAgent(a);
-                    },
-                    items: agents
-                        .map(
-                          (a) => DropdownMenuItem<Agent>(
-                            value: a,
-                            child: Text(
-                              a.agentName,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                          ),
-                        )
-                        .toList(),
-                  ),
-                ),
-                const SizedBox(height: 2),
-                Row(
-                  spacing: 16,
-                  children: [
-                    Text(
-                      isConnected
-                          ? 'STATUS: CONNECTED'
-                          : 'STATUS: DISCONNECTED',
-                      style: TextStyle(
-                        fontSize: 11,
-                        letterSpacing: 0.6,
-                        color: colorScheme.onSurfaceVariant.withValues(
-                          alpha: 0.85,
-                        ),
-                      ),
-                    ),
-
-                    Expanded(
-                      child: Consumer<LiveChatProvider>(
-                        builder: (context, chatProvider, child) => Text(
-                          chatProvider.currentSessionId ?? "",
-                          style: TextStyle(
-                            fontSize: 11,
-                            letterSpacing: 0.6,
-                            color: colorScheme.onSurfaceVariant.withValues(
-                              alpha: 0.85,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-        ],
+      title: Align(
+        alignment: Alignment.centerLeft,
+        child: _AgentSwitcher(
+          agents: agents,
+          selectedAgent: selectedAgent,
+          onSelectAgent: onSelectAgent,
+          initial: _initial(selectedAgent),
+        ),
       ),
       actions: [
+        _ConnectionPill(isConnected: isConnected, onTap: onToggleConnection),
+        const SizedBox(width: 10),
         IconButton(
-          icon: Icon(isConnected ? Icons.link : Icons.link_off),
-          tooltip: isConnected ? 'Connected' : 'Disconnected',
-          onPressed: onToggleConnection,
+          onPressed: () => ThemeController.toggle(context),
+          tooltip: dark ? 'Light mode' : 'Dark mode',
+          icon: Icon(
+            dark ? Icons.light_mode_rounded : Icons.dark_mode_rounded,
+            size: 19,
+            color: t.text2,
+          ),
         ),
-        const SizedBox(width: 12),
+        const SizedBox(width: 10),
       ],
       bottom: PreferredSize(
         preferredSize: const Size.fromHeight(1),
-        child: Container(height: 1, color: const Color(0xFFE9EAF0)),
+        child: Container(height: 1, color: t.border),
+      ),
+    );
+  }
+}
+
+class _AgentSwitcher extends StatelessWidget {
+  final List<Agent> agents;
+  final Agent? selectedAgent;
+  final ValueChanged<Agent> onSelectAgent;
+  final String initial;
+
+  const _AgentSwitcher({
+    required this.agents,
+    required this.selectedAgent,
+    required this.onSelectAgent,
+    required this.initial,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.tokens;
+    return PopupMenuButton<Agent>(
+      tooltip: 'Switch agent',
+      offset: const Offset(0, 48),
+      color: t.surface,
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(14),
+        side: BorderSide(color: t.borderStrong),
+      ),
+      onSelected: onSelectAgent,
+      itemBuilder: (context) => [
+        for (final a in agents)
+          PopupMenuItem<Agent>(
+            value: a,
+            child: Row(
+              children: [
+                Container(
+                  width: 30,
+                  height: 30,
+                  decoration: BoxDecoration(
+                    gradient: t.accentGradient,
+                    shape: BoxShape.circle,
+                  ),
+                  alignment: Alignment.center,
+                  child: Text(
+                    a.agentName.trim().isEmpty
+                        ? 'A'
+                        : a.agentName.trim().characters.first.toUpperCase(),
+                    style: TextStyle(
+                      color: t.onAccent,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    a.agentName,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 13.5,
+                      fontWeight: FontWeight.w600,
+                      color: t.text1,
+                    ),
+                  ),
+                ),
+                if (a.agentName == selectedAgent?.agentName)
+                  Icon(Icons.check_rounded, size: 16, color: t.accent),
+              ],
+            ),
+          ),
+      ],
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(6, 6, 12, 6),
+        decoration: BoxDecoration(
+          color: t.bgApp,
+          borderRadius: BorderRadius.circular(999),
+          border: Border.all(color: t.border),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 28,
+              height: 28,
+              decoration: BoxDecoration(
+                gradient: t.accentGradient,
+                shape: BoxShape.circle,
+              ),
+              alignment: Alignment.center,
+              child: Text(
+                initial,
+                style: TextStyle(
+                  color: t.onAccent,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+            const SizedBox(width: 10),
+            Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  selectedAgent?.agentName ?? 'Agent',
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: t.text1,
+                  ),
+                ),
+                Text(
+                  'agent · online',
+                  style: AppTheme.mono(size: 10, color: t.text3),
+                ),
+              ],
+            ),
+            const SizedBox(width: 6),
+            Icon(Icons.keyboard_arrow_down_rounded, size: 16, color: t.text3),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ConnectionPill extends StatelessWidget {
+  final bool isConnected;
+  final VoidCallback onTap;
+
+  const _ConnectionPill({required this.isConnected, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.tokens;
+    final color = isConnected ? t.success : t.text3;
+    final bg = isConnected ? t.successSoft : t.bg3;
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(999),
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 6),
+          decoration: BoxDecoration(
+            color: bg,
+            borderRadius: BorderRadius.circular(999),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 7,
+                height: 7,
+                decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+              ),
+              const SizedBox(width: 7),
+              Text(
+                isConnected ? 'Connected' : 'Disconnected',
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w500,
+                  color: isConnected ? t.success : t.text2,
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }

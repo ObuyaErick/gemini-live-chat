@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:webs/live_chat/models.dart';
+import 'package:webs/ui/core/app_theme.dart';
 
 class InputBar extends StatelessWidget {
   final TextEditingController controller;
@@ -35,145 +36,248 @@ class InputBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
+    final t = context.tokens;
 
     return SafeArea(
+      top: false,
       child: Container(
-        padding: const EdgeInsets.fromLTRB(20, 12, 20, 10),
-        decoration: const BoxDecoration(color: Color(0xFFF6F7FB)),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            if (stagedFiles.isNotEmpty) ...[
-              Wrap(
-                spacing: 8,
-                runSpacing: 6,
-                children: [
-                  for (final f in stagedFiles)
-                    Chip(
-                      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                      visualDensity: VisualDensity.compact,
-                      avatar: const Icon(
-                        Icons.attach_file_rounded,
-                        size: 14,
-                      ),
-                      label: Text(
-                        '${f.filename}  •  ${_formatSize(f.sizeBytes)}',
-                        style: const TextStyle(fontSize: 12),
-                      ),
-                      deleteIcon: const Icon(Icons.close_rounded, size: 14),
-                      onDeleted: enabled ? () => onRemoveStagedFile(f) : null,
-                    ),
+        padding: const EdgeInsets.fromLTRB(24, 14, 24, 16),
+        decoration: BoxDecoration(
+          color: t.bgApp,
+          border: Border(top: BorderSide(color: t.border)),
+        ),
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 760),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                if (stagedFiles.isNotEmpty) ...[
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 6,
+                    children: [
+                      for (final f in stagedFiles)
+                        _StagedChip(
+                          filename: f.filename,
+                          size: _formatSize(f.sizeBytes),
+                          onRemove:
+                              enabled ? () => onRemoveStagedFile(f) : null,
+                        ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
                 ],
-              ),
-              const SizedBox(height: 8),
-            ],
-            Container(
-              decoration: BoxDecoration(
-                color: const Color(0xFFEDEEF2),
-                borderRadius: BorderRadius.circular(14),
-              ),
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-              child: Row(
-                children: [
-                  IconButton(
-                    constraints: const BoxConstraints(),
-                    padding: EdgeInsets.zero,
-                    onPressed: enabled ? onAttach : null,
-                    icon: Icon(
-                      Icons.add_circle_outline_rounded,
-                      color: enabled
-                          ? colorScheme.onSurfaceVariant.withValues(alpha: 0.7)
-                          : colorScheme.onSurfaceVariant.withValues(alpha: 0.3),
-                    ),
-                    tooltip: 'Attach file',
+                Container(
+                  decoration: BoxDecoration(
+                    color: t.surface,
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: t.borderStrong),
+                    boxShadow: t.e1,
                   ),
-                  const SizedBox(width: 4),
-                  IconButton(
-                    constraints: const BoxConstraints(),
-                    padding: EdgeInsets.zero,
-                    onPressed: (enabled || isInLiveMode) ? onToggleLiveMode : null,
-                    icon: Icon(
-                      isInLiveMode
-                          ? Icons.stop_circle_rounded
-                          : Icons.mic_rounded,
-                      color: isInLiveMode
-                          ? Colors.red.shade400
-                          : (enabled
-                              ? colorScheme.onSurfaceVariant.withValues(alpha: 0.7)
-                              : colorScheme.onSurfaceVariant.withValues(alpha: 0.3)),
-                    ),
-                    tooltip: isInLiveMode ? 'End voice mode' : 'Enter voice mode',
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: TextField(
-                      controller: controller,
-                      enabled: enabled,
-                      minLines: 1,
-                      maxLines: 5,
-                      textInputAction: TextInputAction.send,
-                      onSubmitted: enabled ? (_) => onSend() : null,
-                      decoration: InputDecoration(
-                        isDense: true,
-                        border: InputBorder.none,
-                        hintText: isWaiting
-                            ? '$agentShortName is thinking…'
-                            : 'Ask $agentShortName…',
-                        hintStyle: TextStyle(
-                          color: colorScheme.onSurfaceVariant.withValues(
-                            alpha: 0.6,
+                  padding: const EdgeInsets.fromLTRB(6, 6, 6, 6),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      _CircleIcon(
+                        icon: Icons.add_rounded,
+                        onTap: enabled ? onAttach : null,
+                        tooltip: 'Attach file',
+                      ),
+                      Expanded(
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 6,
+                            vertical: 4,
+                          ),
+                          child: TextField(
+                            controller: controller,
+                            enabled: enabled,
+                            minLines: 1,
+                            maxLines: 6,
+                            textInputAction: TextInputAction.send,
+                            onSubmitted: enabled ? (_) => onSend() : null,
+                            cursorColor: t.accent,
+                            decoration: InputDecoration(
+                              isDense: true,
+                              border: InputBorder.none,
+                              hintText: isWaiting
+                                  ? '$agentShortName is thinking…'
+                                  : 'Ask $agentShortName anything…',
+                              hintStyle: TextStyle(color: t.text3),
+                            ),
+                            style: TextStyle(
+                              fontSize: 14.5,
+                              color: t.text1,
+                              height: 1.4,
+                            ),
                           ),
                         ),
                       ),
-                      style: const TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w500,
+                      _CircleIcon(
+                        icon: isInLiveMode
+                            ? Icons.stop_rounded
+                            : Icons.mic_rounded,
+                        onTap: (enabled || isInLiveMode)
+                            ? onToggleLiveMode
+                            : null,
+                        tooltip:
+                            isInLiveMode ? 'End voice mode' : 'Enter voice mode',
+                        color: isInLiveMode ? t.danger : null,
                       ),
-                    ),
+                      const SizedBox(width: 4),
+                      _SendButton(
+                        isWaiting: isWaiting,
+                        onTap: enabled ? onSend : null,
+                      ),
+                    ],
                   ),
-                  const SizedBox(width: 10),
-                  AnimatedSwitcher(
-                    duration: const Duration(milliseconds: 200),
-                    child: isWaiting
-                        ? SizedBox(
-                            key: const ValueKey('waiting'),
-                            width: 18,
-                            height: 18,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2.3,
-                              color: colorScheme.onSurfaceVariant.withValues(
-                                alpha: 0.6,
-                              ),
-                            ),
-                          )
-                        : IconButton(
-                            key: const ValueKey('send'),
-                            onPressed: enabled ? onSend : null,
-                            icon: Icon(
-                              Icons.send_rounded,
-                              size: 18,
-                              color: enabled
-                                  ? const Color(0xFF9CA3AF)
-                                  : const Color(0xFFCBD0D8),
-                            ),
-                          ),
+                ),
+                const SizedBox(height: 9),
+                Center(
+                  child: Text(
+                    '$agentShortName can make mistakes. Verify consequential actions before confirming.',
+                    style: TextStyle(fontSize: 11, color: t.text3),
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
-            const SizedBox(height: 10),
-            Text(
-              'SHIFT + ENTER FOR NEW LINE • ENTER TO SEND',
-              style: TextStyle(
-                fontSize: 10,
-                letterSpacing: 0.6,
-                color: colorScheme.onSurfaceVariant.withValues(alpha: 0.55),
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ],
+          ),
         ),
+      ),
+    );
+  }
+}
+
+class _CircleIcon extends StatelessWidget {
+  final IconData icon;
+  final VoidCallback? onTap;
+  final String tooltip;
+  final Color? color;
+
+  const _CircleIcon({
+    required this.icon,
+    required this.onTap,
+    required this.tooltip,
+    this.color,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.tokens;
+    final enabled = onTap != null;
+    return IconButton(
+      onPressed: onTap,
+      tooltip: tooltip,
+      style: IconButton.styleFrom(
+        backgroundColor: t.bg3,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(10),
+          side: BorderSide(color: t.border),
+        ),
+        minimumSize: const Size(36, 36),
+        fixedSize: const Size(36, 36),
+        padding: EdgeInsets.zero,
+      ),
+      icon: Icon(
+        icon,
+        size: 18,
+        color: color ?? (enabled ? t.text2 : t.text3),
+      ),
+    );
+  }
+}
+
+class _SendButton extends StatelessWidget {
+  final bool isWaiting;
+  final VoidCallback? onTap;
+
+  const _SendButton({required this.isWaiting, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.tokens;
+    final enabled = onTap != null && !isWaiting;
+    return SizedBox(
+      width: 36,
+      height: 36,
+      child: Material(
+        color: enabled ? t.accent : t.bg3,
+        borderRadius: BorderRadius.circular(10),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(10),
+          onTap: enabled ? onTap : null,
+          child: Center(
+            child: isWaiting
+                ? SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: t.text3,
+                    ),
+                  )
+                : Icon(
+                    Icons.arrow_upward_rounded,
+                    size: 18,
+                    color: enabled ? t.onAccent : t.text3,
+                  ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _StagedChip extends StatelessWidget {
+  final String filename;
+  final String size;
+  final VoidCallback? onRemove;
+
+  const _StagedChip({
+    required this.filename,
+    required this.size,
+    required this.onRemove,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.tokens;
+    return Container(
+      padding: const EdgeInsets.fromLTRB(7, 6, 9, 6),
+      decoration: BoxDecoration(
+        color: t.bg2,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: t.border),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.description_outlined, size: 16, color: t.text2),
+          const SizedBox(width: 8),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                filename,
+                style: TextStyle(
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w500,
+                  color: t.text1,
+                ),
+              ),
+              Text(size, style: TextStyle(fontSize: 10.5, color: t.text3)),
+            ],
+          ),
+          const SizedBox(width: 8),
+          if (onRemove != null)
+            InkWell(
+              onTap: onRemove,
+              borderRadius: BorderRadius.circular(6),
+              child: Icon(Icons.close_rounded, size: 15, color: t.text3),
+            ),
+        ],
       ),
     );
   }

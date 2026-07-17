@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:webs/ui/core/app_theme.dart';
 
 class ErrorBanner extends StatelessWidget {
   final String message;
@@ -8,44 +9,66 @@ class ErrorBanner extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final t = context.tokens;
     return Material(
-      color: const Color(0xFFFFF0F0),
+      color: Colors.transparent,
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-        child: Row(
-          children: [
-            const Icon(
-              Icons.warning_amber_rounded,
-              size: 18,
-              color: Color(0xFFCC2B2B),
-            ),
-            const SizedBox(width: 8),
-            Expanded(
-              child: Text(
-                message,
-                style: const TextStyle(
-                  fontSize: 13,
-                  color: Color(0xFFB42318),
-                  fontWeight: FontWeight.w500,
+        padding: const EdgeInsets.fromLTRB(20, 12, 20, 4),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+          decoration: BoxDecoration(
+            color: t.dangerSoft,
+            borderRadius: BorderRadius.circular(11),
+            border: Border.all(color: t.dangerSoft),
+          ),
+          child: Row(
+            children: [
+              Icon(Icons.error_outline_rounded, size: 16, color: t.danger),
+              const SizedBox(width: 11),
+              Expanded(
+                child: Text.rich(
+                  TextSpan(
+                    children: [
+                      TextSpan(
+                        text: 'Connection issue. ',
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          color: t.text1,
+                        ),
+                      ),
+                      TextSpan(
+                        text: message,
+                        style: TextStyle(fontSize: 13, color: t.text2),
+                      ),
+                    ],
+                  ),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
                 ),
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
               ),
-            ),
-            OutlinedButton(
-              onPressed: onRetry,
-              style: OutlinedButton.styleFrom(
-                foregroundColor: const Color(0xFFB42318),
-                side: const BorderSide(color: Color(0xFFFFC9C9)),
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 14,
-                  vertical: 10,
+              const SizedBox(width: 10),
+              OutlinedButton(
+                onPressed: onRetry,
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: t.danger,
+                  side: BorderSide(color: t.danger),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 8,
+                  ),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  textStyle: const TextStyle(
+                    fontWeight: FontWeight.w600,
+                    fontSize: 12,
+                  ),
                 ),
-                textStyle: const TextStyle(fontWeight: FontWeight.w600),
+                child: const Text('Retry'),
               ),
-              child: const Text('Retry'),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );

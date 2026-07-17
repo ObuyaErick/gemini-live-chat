@@ -25,6 +25,7 @@ import 'package:webs/live_chat/widgets/message_bubble.dart';
 import 'package:webs/live_chat/widgets/sessions_sidebar.dart';
 import 'package:webs/live_chat/widgets/tool_call_chip.dart';
 import 'package:webs/models/agent_models.dart';
+import 'package:webs/ui/core/app_theme.dart';
 import 'package:webs/ui/core/horizontal_layout_breakpoints.dart';
 
 class LiveChat extends StatefulWidget {
@@ -1174,64 +1175,22 @@ class _LiveChatState extends State<LiveChat> {
                         agentName: agentName,
                         subtitle: agentSubtitle,
                         actions: [
-                          ...suggestedQuestions.expand(
-                            (q) => [
-                              SizedBox(height: 10),
-                              Container(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 12,
-                                  vertical: 8,
-                                ),
-                                decoration: BoxDecoration(
-                                  border: Border.all(
-                                    color: Theme.of(context).colorScheme.outline
-                                        .withValues(alpha: 0.6),
+                          if (suggestedQuestions.isNotEmpty)
+                            Wrap(
+                              spacing: 12,
+                              runSpacing: 12,
+                              alignment: WrapAlignment.center,
+                              children: [
+                                for (final q in suggestedQuestions)
+                                  _SuggestionCard(
+                                    text: q.questionText,
+                                    onTap: () {
+                                      _inputController.text = q.questionText;
+                                      _sendMessage();
+                                    },
                                   ),
-                                ),
-                                child: Row(
-                                  spacing: 8,
-
-                                  children: [
-                                    Expanded(
-                                      child: Text(
-                                        q.questionText,
-                                        softWrap: true,
-                                        maxLines: 5,
-                                        overflow: TextOverflow.ellipsis,
-                                        style: const TextStyle(
-                                          fontSize: 13,
-                                          fontWeight: FontWeight.w600,
-                                        ),
-                                      ),
-                                    ),
-                                    IconButton(
-                                      constraints: const BoxConstraints(),
-                                      padding: const EdgeInsets.all(4),
-                                      onPressed: () =>
-                                          copyToClipboard(q.questionText),
-                                      icon: const Icon(
-                                        Icons.copy_rounded,
-                                        size: 18,
-                                      ),
-                                    ),
-                                    IconButton(
-                                      constraints: const BoxConstraints(),
-                                      padding: const EdgeInsets.all(4),
-                                      onPressed: () {
-                                        _inputController.text = q.questionText;
-                                        _sendMessage();
-                                      },
-                                      icon: const Icon(
-                                        Icons
-                                            .keyboard_double_arrow_right_rounded,
-                                        size: 18,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ],
-                          ),
+                              ],
+                            ),
                         ],
                       ),
                     )
@@ -1239,10 +1198,15 @@ class _LiveChatState extends State<LiveChat> {
                       controller: _scrollController,
                       padding: const EdgeInsets.fromLTRB(24, 56, 24, 24),
                       itemCount: _messages.length,
-                      itemBuilder: (context, i) => MessageBubble(
-                        message: _messages[i],
-                        agentName: agentName,
-                        formatTime: _formatTime,
+                      itemBuilder: (context, i) => Center(
+                        child: ConstrainedBox(
+                          constraints: const BoxConstraints(maxWidth: 760),
+                          child: MessageBubble(
+                            message: _messages[i],
+                            agentName: agentName,
+                            formatTime: _formatTime,
+                          ),
+                        ),
                       ),
                     ),
               Align(
@@ -1256,13 +1220,9 @@ class _LiveChatState extends State<LiveChat> {
           ),
         ),
         if (_activeToolEvents.isNotEmpty)
-          Padding(
-            padding: const EdgeInsets.fromLTRB(24, 8, 24, 0),
-            child: ToolCallChip(events: _activeToolEvents),
-          ),
+          _CenteredBand(child: ToolCallChip(events: _activeToolEvents)),
         if (_pendingAction != null)
-          Padding(
-            padding: const EdgeInsets.fromLTRB(24, 8, 24, 0),
+          _CenteredBand(
             child: ActionConfirmationCard(
               action: _pendingAction!,
               onConfirm: _confirmAction,
@@ -1270,8 +1230,7 @@ class _LiveChatState extends State<LiveChat> {
             ),
           ),
         if (_pendingClarification != null)
-          Padding(
-            padding: const EdgeInsets.fromLTRB(24, 8, 24, 0),
+          _CenteredBand(
             child: ClarificationCard(
               clarification: _pendingClarification!,
               onSubmit: (answers) => _sendElicitResponse(
@@ -1302,7 +1261,7 @@ class _LiveChatState extends State<LiveChat> {
       child: HorizontalLayoutBreakpoints(
         all: (context, _) => Scaffold(
           key: _scaffoldKey,
-          backgroundColor: const Color(0xFFF6F7FB),
+          backgroundColor: context.tokens.bgApp,
           drawer: Drawer(
             width: SessionsSidebar.openWidth,
             child: SessionsSidebar(
@@ -1348,7 +1307,7 @@ class _LiveChatState extends State<LiveChat> {
         ),
         md: (context, _) => Scaffold(
           key: _scaffoldKey,
-          backgroundColor: const Color(0xFFF6F7FB),
+          backgroundColor: context.tokens.bgApp,
           appBar: LiveChatAppBar(
             isConnected: _isConnected,
             agents: _agents,
@@ -1380,6 +1339,85 @@ class _LiveChatState extends State<LiveChat> {
               ),
               Expanded(flex: 2, child: makeChatArea()),
               if (_openDocuments.isNotEmpty) _makeEditorPanel(),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Wraps a below-the-thread affordance (tool chip, confirmation / clarification
+/// card) in the same centered 760px column the messages use.
+class _CenteredBand extends StatelessWidget {
+  final Widget child;
+  const _CenteredBand({required this.child});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(24, 10, 24, 0),
+      child: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 760),
+          child: Align(alignment: Alignment.centerLeft, child: child),
+        ),
+      ),
+    );
+  }
+}
+
+/// A suggested-question card shown in the empty state. Hover lifts to the
+/// accent tint, matching the design system's suggestion grid.
+class _SuggestionCard extends StatefulWidget {
+  final String text;
+  final VoidCallback onTap;
+
+  const _SuggestionCard({required this.text, required this.onTap});
+
+  @override
+  State<_SuggestionCard> createState() => _SuggestionCardState();
+}
+
+class _SuggestionCardState extends State<_SuggestionCard> {
+  bool _hover = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.tokens;
+    return MouseRegion(
+      onEnter: (_) => setState(() => _hover = true),
+      onExit: (_) => setState(() => _hover = false),
+      cursor: SystemMouseCursors.click,
+      child: GestureDetector(
+        onTap: widget.onTap,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 150),
+          width: 268,
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: _hover ? t.accentSoft : t.bg2,
+            borderRadius: BorderRadius.circular(13),
+            border: Border.all(color: _hover ? t.accentBorder : t.border),
+          ),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(Icons.auto_awesome_outlined, size: 16, color: t.accent),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  widget.text,
+                  maxLines: 3,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 13.5,
+                    fontWeight: FontWeight.w500,
+                    height: 1.35,
+                    color: t.text1,
+                  ),
+                ),
+              ),
             ],
           ),
         ),

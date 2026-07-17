@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:webs/live_chat/models.dart';
 import 'package:webs/live_chat/widgets/plotly_chart.dart';
+import 'package:webs/ui/core/app_theme.dart';
 
 class AttachmentsView extends StatelessWidget {
   final List<Attachment> attachments;
@@ -38,14 +39,39 @@ class _DownloadLink extends StatelessWidget {
     return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
   }
 
+  String _ext() {
+    final name = attachment.filename;
+    final dot = name.lastIndexOf('.');
+    if (dot != -1 && dot < name.length - 1) {
+      return name.substring(dot + 1).toUpperCase();
+    }
+    return 'FILE';
+  }
+
+  (Color, Color) _badgeColors(AppTokens t) {
+    switch (_ext()) {
+      case 'CSV':
+      case 'XLSX':
+        return (t.successSoft, t.success);
+      case 'PDF':
+        return (t.dangerSoft, t.danger);
+      case 'JSON':
+        return (t.warningSoft, t.warning);
+      default:
+        return (t.bg3, t.text2);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
+    final t = context.tokens;
     final size = _formatSize(attachment.sizeBytes);
+    final (badgeBg, badgeFg) = _badgeColors(t);
     return Material(
-      color: const Color(0xFFF6F7FB),
-      borderRadius: BorderRadius.circular(8),
+      color: t.bg2,
+      borderRadius: BorderRadius.circular(11),
       child: InkWell(
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: BorderRadius.circular(11),
         onTap: () {
           Clipboard.setData(ClipboardData(text: attachment.url));
           ScaffoldMessenger.of(context).showSnackBar(
@@ -57,14 +83,30 @@ class _DownloadLink extends StatelessWidget {
             ),
           );
         },
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        child: Container(
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(11),
+            border: Border.all(color: t.border),
+          ),
+          padding: const EdgeInsets.all(9),
           child: Row(
             children: [
-              const Icon(
-                Icons.attach_file_rounded,
-                size: 18,
-                color: Color(0xFF1F2330),
+              Container(
+                width: 34,
+                height: 34,
+                decoration: BoxDecoration(
+                  color: badgeBg,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                alignment: Alignment.center,
+                child: Text(
+                  _ext(),
+                  style: AppTheme.mono(
+                    size: 8.5,
+                    weight: FontWeight.w700,
+                    color: badgeFg,
+                  ),
+                ),
               ),
               const SizedBox(width: 10),
               Expanded(
@@ -75,30 +117,21 @@ class _DownloadLink extends StatelessWidget {
                       attachment.filename,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 13,
                         fontWeight: FontWeight.w600,
-                        color: Color(0xFF1F2330),
+                        color: t.text1,
                       ),
                     ),
-                    Text(
-                      [
-                        attachment.mimeType,
-                        if (size.isNotEmpty) size,
-                      ].join('  •  '),
-                      style: const TextStyle(
-                        fontSize: 11,
-                        color: Color(0xFF747787),
+                    if (size.isNotEmpty)
+                      Text(
+                        size,
+                        style: TextStyle(fontSize: 11, color: t.text3),
                       ),
-                    ),
                   ],
                 ),
               ),
-              const Icon(
-                Icons.open_in_new_rounded,
-                size: 16,
-                color: Color(0xFF747787),
-              ),
+              Icon(Icons.open_in_new_rounded, size: 16, color: t.text3),
             ],
           ),
         ),

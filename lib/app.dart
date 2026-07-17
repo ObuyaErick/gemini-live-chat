@@ -6,6 +6,8 @@ import 'package:webs/api/api_client.dart';
 import 'package:webs/lab/table_demo_screen.dart';
 import 'package:webs/live_chat/live_chat_screen.dart';
 import 'package:webs/live_chat/models.dart';
+import 'package:webs/ui/core/app_theme.dart';
+import 'package:webs/ui/core/theme_controller.dart';
 
 const _demoChatContext = ChatContext(
   module: 'analytics',
@@ -34,13 +36,20 @@ class App extends StatefulWidget {
 class _AppState extends State<App> {
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'Flutter Demo',
-      debugShowCheckedModeBanner: false,
-      theme: ThemeData(colorScheme: .fromSeed(seedColor: Colors.deepPurple)),
-      home: const LiveChat(chatContext: _demoChatContext),
+    return ValueListenableBuilder<ThemeMode>(
+      valueListenable: ThemeController.mode,
+      builder: (context, mode, _) {
+        return MaterialApp(
+          title: 'Live Chat',
+          debugShowCheckedModeBanner: false,
+          theme: AppTheme.light(),
+          darkTheme: AppTheme.dark(),
+          themeMode: mode,
+          home: const LiveChat(chatContext: _demoChatContext),
 
-      // home: TableDemoScreen(),
+          // home: TableDemoScreen(),
+        );
+      },
     );
   }
 }

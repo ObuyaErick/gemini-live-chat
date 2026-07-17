@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:webs/live_chat/models.dart';
+import 'package:webs/ui/core/app_theme.dart';
 
 /// Card shown when the server parks a turn on a `clarification` frame
 /// (`ASK_USER` tool). The user picks answers to each batched question and
 /// submits them together as a single `elicit_response`.
 class ClarificationCard extends StatefulWidget {
   final PendingClarification clarification;
+
   /// Called with positional answers: answers[i] = chosen labels for questions[i].
   /// An empty inner list means the question was dismissed.
   final void Function(List<List<String>> answers) onSubmit;
@@ -21,7 +23,6 @@ class ClarificationCard extends StatefulWidget {
 }
 
 class _ClarificationCardState extends State<ClarificationCard> {
-  // Per-question selections: index → set of chosen labels
   late final List<Set<String>> _selections;
 
   @override
@@ -42,9 +43,8 @@ class _ClarificationCardState extends State<ClarificationCard> {
           _selections[qIndex].add(label);
         }
       } else {
-        // Single-select: clear and set.
         if (_selections[qIndex].contains(label)) {
-          _selections[qIndex].clear(); // tapping selected option deselects (dismiss)
+          _selections[qIndex].clear();
         } else {
           _selections[qIndex] = {label};
         }
@@ -59,46 +59,36 @@ class _ClarificationCardState extends State<ClarificationCard> {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
+    final t = context.tokens;
     final questions = widget.clarification.questions;
 
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: theme.colorScheme.secondaryContainer.withValues(alpha: 0.35),
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(
-          color: theme.colorScheme.secondary.withValues(alpha: 0.4),
-        ),
+        color: t.surface,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: t.accentBorder),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // ── Header ────────────────────────────────────────────────────
           Row(
             children: [
-              Icon(
-                Icons.help_outline_rounded,
-                size: 16,
-                color: theme.colorScheme.secondary,
-              ),
+              Icon(Icons.help_outline_rounded, size: 16, color: t.accent),
               const SizedBox(width: 8),
               Text(
-                'CLARIFICATION • ${widget.clarification.toolName}',
+                'A couple of quick questions',
                 style: TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w700,
-                  letterSpacing: 0.8,
-                  color: theme.colorScheme.secondary,
+                  fontSize: 13.5,
+                  fontWeight: FontWeight.w600,
+                  color: t.text1,
                 ),
               ),
             ],
           ),
-
-          // ── Questions ─────────────────────────────────────────────────
           for (int i = 0; i < questions.length; i++) ...[
-            const SizedBox(height: 12),
+            const SizedBox(height: 16),
             _QuestionBlock(
               question: questions[i],
               selections: _selections[i],
@@ -106,18 +96,25 @@ class _ClarificationCardState extends State<ClarificationCard> {
                   _toggle(i, label, questions[i].multiSelect),
             ),
           ],
-
-          // ── Submit ────────────────────────────────────────────────────
-          const SizedBox(height: 12),
-          Align(
-            alignment: Alignment.centerRight,
+          const SizedBox(height: 18),
+          SizedBox(
+            width: double.infinity,
             child: FilledButton(
               onPressed: _submit,
               style: FilledButton.styleFrom(
-                backgroundColor: theme.colorScheme.secondary,
-                foregroundColor: theme.colorScheme.onSecondary,
+                backgroundColor: t.accent,
+                foregroundColor: t.onAccent,
+                elevation: 0,
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(9),
+                ),
+                textStyle: const TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                ),
               ),
-              child: const Text('Submit'),
+              child: const Text('Submit answers'),
             ),
           ),
         ],
@@ -139,52 +136,174 @@ class _QuestionBlock extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
+    final t = context.tokens;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          question.question,
+        Text.rich(
+          TextSpan(
+            children: [
+              TextSpan(text: question.question),
+              if (question.multiSelect)
+                TextSpan(
+                  text: '  (multi)',
+                  style: TextStyle(fontWeight: FontWeight.w400, color: t.text3),
+                ),
+            ],
+          ),
           style: TextStyle(
-            fontSize: 13,
+            fontSize: 12.5,
             fontWeight: FontWeight.w500,
-            color: theme.colorScheme.onSurface,
+            color: t.text1,
             height: 1.4,
           ),
         ),
-        const SizedBox(height: 8),
-        Wrap(
-          spacing: 6,
-          runSpacing: 6,
-          children: question.options.map((opt) {
-            final selected = selections.contains(opt.label);
-            return FilterChip(
-              label: Text(opt.label),
-              selected: selected,
-              onSelected: (_) => onToggle(opt.label),
-              tooltip: opt.description,
-              showCheckmark: question.multiSelect,
-              selectedColor:
-                  theme.colorScheme.secondary.withValues(alpha: 0.2),
-              checkmarkColor: theme.colorScheme.secondary,
-              labelStyle: TextStyle(
-                fontSize: 12,
-                color: selected
-                    ? theme.colorScheme.secondary
-                    : theme.colorScheme.onSurfaceVariant,
-                fontWeight:
-                    selected ? FontWeight.w600 : FontWeight.normal,
-              ),
-              side: BorderSide(
-                color: selected
-                    ? theme.colorScheme.secondary
-                    : theme.colorScheme.outlineVariant,
-              ),
-              padding: const EdgeInsets.symmetric(horizontal: 4),
-            );
-          }).toList(),
-        ),
+        const SizedBox(height: 10),
+        if (question.multiSelect)
+          Column(
+            children: [
+              for (final opt in question.options)
+                _CheckOption(
+                  option: opt,
+                  selected: selections.contains(opt.label),
+                  onTap: () => onToggle(opt.label),
+                ),
+            ],
+          )
+        else
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              for (final opt in question.options)
+                _PillOption(
+                  label: opt.label,
+                  selected: selections.contains(opt.label),
+                  onTap: () => onToggle(opt.label),
+                ),
+            ],
+          ),
       ],
+    );
+  }
+}
+
+class _PillOption extends StatelessWidget {
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  const _PillOption({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.tokens;
+    return Material(
+      color: selected ? t.accentSoft : Colors.transparent,
+      borderRadius: BorderRadius.circular(999),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(999),
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 6),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(999),
+            border: Border.all(
+              color: selected ? t.accent : t.border,
+              width: selected ? 1.5 : 1,
+            ),
+          ),
+          child: Text(
+            label,
+            style: TextStyle(
+              fontSize: 12.5,
+              color: t.text1,
+              fontWeight: selected ? FontWeight.w500 : FontWeight.w400,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _CheckOption extends StatelessWidget {
+  final ClarificationOption option;
+  final bool selected;
+  final VoidCallback onTap;
+
+  const _CheckOption({
+    required this.option,
+    required this.selected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.tokens;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 7),
+      child: Material(
+        color: selected ? t.accentSoft : Colors.transparent,
+        borderRadius: BorderRadius.circular(9),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(9),
+          onTap: onTap,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 9),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(9),
+              border: Border.all(color: selected ? t.accentBorder : t.border),
+            ),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  width: 16,
+                  height: 16,
+                  margin: const EdgeInsets.only(top: 1),
+                  decoration: BoxDecoration(
+                    color: selected ? t.accent : Colors.transparent,
+                    borderRadius: BorderRadius.circular(5),
+                    border: selected
+                        ? null
+                        : Border.all(color: t.borderStrong, width: 1.5),
+                  ),
+                  child: selected
+                      ? Icon(Icons.check_rounded, size: 11, color: t.onAccent)
+                      : null,
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        option.label,
+                        style: TextStyle(
+                          fontSize: 12.5,
+                          fontWeight: FontWeight.w500,
+                          color: t.text1,
+                        ),
+                      ),
+                      if (option.description != null &&
+                          option.description!.isNotEmpty)
+                        Text(
+                          option.description!,
+                          style: TextStyle(fontSize: 11, color: t.text3),
+                        ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
     );
   }
 }

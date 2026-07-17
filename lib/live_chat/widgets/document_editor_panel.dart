@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:webs/live_chat/models.dart';
+import 'package:webs/ui/core/app_theme.dart';
 
 /// Right-side panel that displays and edits `kind: "editable"` documents.
 ///
@@ -126,10 +127,11 @@ class _DocumentEditorPanelState extends State<DocumentEditorPanel> {
     final pendingDiff =
         activeId != null ? widget.pendingProposals[activeId] : null;
 
+    final t = context.tokens;
     return Container(
       decoration: BoxDecoration(
-        color: theme.colorScheme.surface,
-        border: Border(left: BorderSide(color: theme.dividerColor)),
+        color: t.bg2,
+        border: Border(left: BorderSide(color: t.border)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -285,21 +287,15 @@ class _VersionBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
+    final t = context.tokens;
     return Container(
       margin: const EdgeInsets.only(right: 8),
-      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
       decoration: BoxDecoration(
-        color: theme.colorScheme.secondaryContainer,
-        borderRadius: BorderRadius.circular(10),
+        color: t.bg3,
+        borderRadius: BorderRadius.circular(999),
       ),
-      child: Text(
-        'v$version',
-        style: TextStyle(
-          fontSize: 11,
-          color: theme.colorScheme.onSecondaryContainer,
-        ),
-      ),
+      child: Text('v$version', style: AppTheme.mono(size: 10.5, color: t.text3)),
     );
   }
 }
@@ -336,63 +332,84 @@ class _ProposalBanner extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
+    final t = context.tokens;
     final lines = diff.split('\n');
+    final adds = lines.where((l) => l.startsWith('+') && !l.startsWith('+++')).length;
+    final dels = lines.where((l) => l.startsWith('-') && !l.startsWith('---')).length;
 
     return Container(
       decoration: BoxDecoration(
-        border: Border(bottom: BorderSide(color: theme.dividerColor)),
+        border: Border(bottom: BorderSide(color: t.border)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         mainAxisSize: MainAxisSize.min,
         children: [
           // ── Header row ─────────────────────────────────────────────────
-          Padding(
-            padding: const EdgeInsets.fromLTRB(14, 8, 8, 8),
+          Container(
+            color: t.accentSoft,
+            padding: const EdgeInsets.fromLTRB(14, 10, 10, 10),
             child: Row(
               children: [
-                Icon(
-                  Icons.auto_fix_high_rounded,
-                  size: 15,
-                  color: theme.colorScheme.secondary,
-                ),
+                Icon(Icons.auto_fix_high_rounded, size: 15, color: t.accent),
                 const SizedBox(width: 8),
-                Text(
-                  'AI suggested changes',
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                    color: theme.colorScheme.onSurface,
+                Expanded(
+                  child: Text.rich(
+                    TextSpan(
+                      children: [
+                        TextSpan(
+                          text: 'Proposed changes  ',
+                          style: TextStyle(
+                            fontSize: 12.5,
+                            fontWeight: FontWeight.w600,
+                            color: t.text1,
+                          ),
+                        ),
+                        TextSpan(
+                          text: '+$adds / −$dels',
+                          style: AppTheme.mono(size: 11, color: t.text2),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
-                const Spacer(),
-                TextButton(
+                const SizedBox(width: 8),
+                OutlinedButton(
                   onPressed: onReject,
-                  style: TextButton.styleFrom(
+                  style: OutlinedButton.styleFrom(
                     padding: const EdgeInsets.symmetric(
-                      horizontal: 10,
-                      vertical: 4,
+                      horizontal: 12,
+                      vertical: 6,
                     ),
                     minimumSize: Size.zero,
                     tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                    foregroundColor: theme.colorScheme.onSurfaceVariant,
+                    foregroundColor: t.text2,
+                    side: BorderSide(color: t.borderStrong),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
                   ),
                   child: const Text('Reject', style: TextStyle(fontSize: 12)),
                 ),
-                const SizedBox(width: 4),
+                const SizedBox(width: 6),
                 FilledButton(
                   onPressed: onAccept,
                   style: FilledButton.styleFrom(
+                    backgroundColor: t.accent,
+                    foregroundColor: t.onAccent,
+                    elevation: 0,
                     padding: const EdgeInsets.symmetric(
-                      horizontal: 10,
-                      vertical: 4,
+                      horizontal: 14,
+                      vertical: 6,
                     ),
                     minimumSize: Size.zero,
                     tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                     textStyle: const TextStyle(fontSize: 12),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
                   ),
-                  child: const Text('Accept'),
+                  child: const Text('Accept all'),
                 ),
               ],
             ),
@@ -400,7 +417,7 @@ class _ProposalBanner extends StatelessWidget {
           // ── Diff view ──────────────────────────────────────────────────
           Container(
             constraints: const BoxConstraints(maxHeight: 220),
-            color: theme.colorScheme.surfaceContainerLowest,
+            color: t.bg2,
             child: SingleChildScrollView(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -422,46 +439,42 @@ class _DiffLine extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final t = context.tokens;
 
-    final Color? bg;
-    final Color textColor;
+    Color? bg;
+    Color textColor;
+    Border? leftBorder;
 
     if (line.startsWith('---') || line.startsWith('+++')) {
       bg = null;
-      textColor = Theme.of(context).colorScheme.onSurfaceVariant;
+      textColor = t.text3;
     } else if (line.startsWith('-')) {
-      bg = isDark
-          ? const Color(0x33F44336)
-          : const Color(0x1FF44336); // red tint
-      textColor = isDark ? const Color(0xFFEF9A9A) : const Color(0xFFB71C1C);
+      bg = t.diffDel;
+      textColor = t.text2;
+      leftBorder = Border(left: BorderSide(color: t.diffDelLine, width: 3));
     } else if (line.startsWith('+')) {
-      bg = isDark
-          ? const Color(0x334CAF50)
-          : const Color(0x1F4CAF50); // green tint
-      textColor = isDark ? const Color(0xFFA5D6A7) : const Color(0xFF1B5E20);
+      bg = t.diffAdd;
+      textColor = t.text1;
+      leftBorder = Border(left: BorderSide(color: t.diffAddLine, width: 3));
     } else if (line.startsWith('@@')) {
-      bg = isDark
-          ? const Color(0x221E88E5)
-          : const Color(0x111E88E5); // blue tint
-      textColor = isDark ? const Color(0xFF90CAF9) : const Color(0xFF1565C0);
+      bg = t.accentSoft;
+      textColor = t.accent;
     } else {
       bg = null;
-      textColor = Theme.of(context).colorScheme.onSurface;
+      textColor = t.text1;
     }
 
     return Container(
-      color: bg,
+      decoration: BoxDecoration(color: bg, border: leftBorder),
       width: double.infinity,
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 1),
       child: Text(
         line,
-        style: TextStyle(
-          fontFamily: 'monospace',
-          fontSize: 11.5,
-          height: 1.55,
+        style: AppTheme.mono(
+          size: 11.5,
+          weight: FontWeight.w400,
           color: textColor,
-        ),
+        ).copyWith(height: 1.6),
       ),
     );
   }

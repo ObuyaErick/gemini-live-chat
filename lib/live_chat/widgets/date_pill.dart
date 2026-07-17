@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:webs/ui/core/app_theme.dart';
 
 class DatePill extends StatelessWidget {
   final String text;
@@ -6,21 +7,21 @@ class DatePill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final t = context.tokens;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       decoration: BoxDecoration(
-        color: const Color(0xFFEDEEF2),
+        color: t.bg3,
         borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: t.border),
       ),
       child: Text(
         text,
-        style: TextStyle(
-          fontSize: 10,
-          fontWeight: FontWeight.w700,
-          letterSpacing: 0.8,
-          color: Theme.of(
-            context,
-          ).colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
+        style: AppTheme.mono(
+          size: 10,
+          weight: FontWeight.w600,
+          color: t.text3,
+          letterSpacing: 0.6,
         ),
       ),
     );
