@@ -1,4 +1,4 @@
-/// A shared-transcript session as returned by `GET /threads`. Not tied to a
+/// A shared-transcript session as returned by `GET /sessions`. Not tied to a
 /// single agent (v12 §6.7): [agentId] is the session's *initial* agent and
 /// [participantAgents] lists every agent that has taken a turn.
 class ChatSession {

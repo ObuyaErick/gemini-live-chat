@@ -81,6 +81,15 @@ class LiveChatProvider extends ChangeNotifier {
   final List<int> _pendingAudioBytes = [];
   int _liveAudioSampleRate = 16000;
 
+  /// The spoken line currently being transcribed, model or user.
+  ///
+  /// `output_transcript` / `input_transcript` stream as `is_delta: true` chunks
+  /// closed by one `is_delta: false` frame carrying the whole line, so the
+  /// chunks fold into this bubble instead of each spawning their own. Kept
+  /// separate from [_streamingMessage] because `final` mutates that one
+  /// (status + attachments) and live turns still emit `final`.
+  ChatMessage? _transcriptMessage;
+
   // ---- Sessions ------------------------------------------------------------
   final Map<String, ChatSession> _sessions = {};
   String? _currentSessionId;
@@ -247,6 +256,7 @@ class LiveChatProvider extends ChangeNotifier {
     _isWaitingForResponse = false;
     _isInLiveMode = false;
     _streamingMessage = null;
+    _closeTranscript();
     _pendingAction = null;
     _pendingClarification = null;
     _activeToolEvents.clear();
@@ -308,6 +318,7 @@ class LiveChatProvider extends ChangeNotifier {
     _messages.clear();
     _activeToolEvents.clear();
     _streamingMessage = null;
+    _transcriptMessage = null;
     _pendingAction = null;
     _pendingClarification = null;
     _isWaitingForResponse = false;
@@ -341,7 +352,7 @@ class LiveChatProvider extends ChangeNotifier {
     notifyListeners();
     try {
       final res = await http.get(
-        Uri.parse('${ApiClient.baseUrl}/threads'),
+        Uri.parse('${ApiClient.baseUrl}/sessions'),
         headers: {
           if (ApiClient.token != null) 'x-winp-token': ApiClient.token!,
         },
@@ -427,7 +438,7 @@ class LiveChatProvider extends ChangeNotifier {
     // v12 §6.7: sticky agent switch — send agent_id only while our selection
     // differs from the agent the server is currently using.
     final selectedId = _selectedAgent?.agentId;
-    if (selectedId != null && selectedId != _activeAgentId) {
+    if (selectedId != null) {
       payload['agent_id'] = selectedId;
     }
     if (_activeDocumentFileId != null) {
@@ -762,7 +773,10 @@ class LiveChatProvider extends ChangeNotifier {
           _streamingMessage = null;
         } else {
           final content = payload['content'] as String? ?? '';
-          if (content.isNotEmpty) {
+          // In live mode `final` carries an empty content with the turn's
+          // attachments (guide §9.3) — still surface it so charts and Malloy
+          // dashboards produced during voice aren't dropped.
+          if (content.isNotEmpty || attachments.isNotEmpty) {
             _messages.add(
               ChatMessage(
                 role: MessageRole.assistant,
@@ -820,6 +834,7 @@ class LiveChatProvider extends ChangeNotifier {
           _pendingAudioBytes.clear();
         }
         _isInLiveMode = mode == 'live';
+        if (mode != 'live') _closeTranscript();
         if (mode == 'standard') _isWaitingForResponse = false;
         notifyListeners();
 
@@ -832,35 +847,14 @@ class LiveChatProvider extends ChangeNotifier {
         _pendingAudioBytes.addAll(base64Decode(b64));
 
       case 'output_transcript':
-        final text = payload['content'] as String? ?? '';
-        if (text.isEmpty) return;
-        _messages.add(
-          ChatMessage(
-            role: MessageRole.assistant,
-            content: text,
-            status: MessageStatus.complete,
-            isTranscript: true,
-            agentId: _activeAgentId,
-          ),
-        );
-        notifyListeners();
-        _emit(const ScrollToBottom());
+        _handleTranscript(payload, MessageRole.assistant);
 
       case 'input_transcript':
-        final text = payload['content'] as String? ?? '';
-        if (text.isEmpty) return;
-        _messages.add(
-          ChatMessage(
-            role: MessageRole.user,
-            content: text,
-            isTranscript: true,
-          ),
-        );
-        notifyListeners();
-        _emit(const ScrollToBottom());
+        _handleTranscript(payload, MessageRole.user);
 
       case 'turn_complete':
         if (_pendingAudioBytes.isNotEmpty) _flushAudio();
+        _closeTranscript();
 
       case 'executable_code':
       case 'code_execution_result':
@@ -888,6 +882,7 @@ class LiveChatProvider extends ChangeNotifier {
         final errMsg = payload['content'] as String? ?? 'Unknown error';
         _streamingMessage?.status = MessageStatus.error;
         _streamingMessage = null;
+        _closeTranscript();
         _activeToolEvents.clear();
         _pendingAction = null;
         _pendingClarification = null;
@@ -904,6 +899,69 @@ class LiveChatProvider extends ChangeNotifier {
         _emit(const ScrollToBottom());
     }
   }
+
+  /// Folds a live-mode `*_transcript` frame into the open spoken line.
+  ///
+  /// Chunks carry `is_delta: true` and append to [_transcriptMessage]; the
+  /// closing `is_delta: false` frame carries the complete line and *replaces*
+  /// whatever the chunks accumulated, since it is the authoritative text. A
+  /// frame without `is_delta` is a whole line on its own (the shape documented
+  /// in guide §5.4), so it stands as its own bubble.
+  ///
+  /// [role] separates the model's line from the user's; a speaker change closes
+  /// the open line rather than appending across speakers.
+  void _handleTranscript(Map<String, dynamic> payload, MessageRole role) {
+    final text = payload['content'] as String? ?? '';
+    if (text.isEmpty) return;
+    final isDelta = payload['is_delta'] as bool? ?? false;
+
+    var line = _transcriptMessage;
+    if (line != null && line.role != role) {
+      _closeTranscript();
+      line = null;
+    }
+
+    if (line == null) {
+      line = ChatMessage(
+        role: role,
+        content: text,
+        status: isDelta ? MessageStatus.streaming : MessageStatus.complete,
+        isTranscript: true,
+        agentId: role == MessageRole.assistant ? _activeAgentId : null,
+      );
+      _messages.add(line);
+    } else if (isDelta) {
+      line.content = _appendTranscriptChunk(line.content, text);
+    } else {
+      line.content = text;
+      line.status = MessageStatus.complete;
+    }
+
+    _transcriptMessage = isDelta ? line : null;
+    notifyListeners();
+    _emit(const ScrollToBottom());
+  }
+
+  /// Seals the open spoken line so the next transcript frame starts a new
+  /// bubble. Safe to call when nothing is open.
+  void _closeTranscript() {
+    _transcriptMessage?.status = MessageStatus.complete;
+    _transcriptMessage = null;
+  }
+
+  /// Transcript chunks arrive pre-trimmed — `"Hello! How"`, `"can I"`, `"help"`
+  /// — so a raw concat reads "Howcan Ihelp". Re-insert the word break; a bad
+  /// guess only shows while the line streams, because the closing non-delta
+  /// frame overwrites it with the server's own text.
+  String _appendTranscriptChunk(String buffer, String chunk) {
+    if (buffer.isEmpty) return chunk;
+    final needsSpace =
+        !buffer.endsWith(' ') && !_leadingPunctuation.hasMatch(chunk);
+    return needsSpace ? '$buffer $chunk' : buffer + chunk;
+  }
+
+  /// Chunks opening with these need no word break inserted before them.
+  static final _leadingPunctuation = RegExp(r"""^[\s,.!?;:)\]}%…'’"”]""");
 
   void _handleHistory(Map<String, dynamic> payload) {
     final content =
@@ -938,6 +996,8 @@ class LiveChatProvider extends ChangeNotifier {
             }),
       );
     _streamingMessage = null;
+    // The replay rebuilt _messages, so any open line is no longer in the list.
+    _transcriptMessage = null;
     _activeToolEvents.clear();
     _pendingAction = null;
     _pendingClarification = null;
@@ -1017,6 +1077,7 @@ class LiveChatProvider extends ChangeNotifier {
     _isInLiveMode = false;
     _connectionError = 'WebSocket error: $error';
     _streamingMessage = null;
+    _closeTranscript();
     _activeToolEvents.clear();
     notifyListeners();
   }
@@ -1028,6 +1089,7 @@ class LiveChatProvider extends ChangeNotifier {
     _isWaitingForResponse = false;
     _isInLiveMode = false;
     _streamingMessage = null;
+    _closeTranscript();
     _activeToolEvents.clear();
     notifyListeners();
   }

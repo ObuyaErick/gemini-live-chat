@@ -6,10 +6,37 @@ import 'package:webview_flutter/webview_flutter.dart';
 import 'package:webs/ui/core/app_theme.dart';
 
 class PlotlyChart extends StatefulWidget {
+  /// Signed URL of a Plotly figure JSON attachment. Empty when the figure was
+  /// supplied directly via [PlotlyChart.fromFigure].
   final String url;
+
+  /// A pre-built Plotly figure (`{data, layout, config}`) to render without a
+  /// network round-trip — used by the Malloy renderer, which derives figures
+  /// from rows it already holds.
+  final String? figureJson;
+
   final double height;
 
-  const PlotlyChart({super.key, required this.url, this.height = 380});
+  /// Card header label and badge.
+  final String title;
+  final String badge;
+
+  const PlotlyChart({
+    super.key,
+    required this.url,
+    this.height = 380,
+    this.title = 'Chart',
+    this.badge = 'Plotly',
+  }) : figureJson = null;
+
+  const PlotlyChart.fromFigure({
+    super.key,
+    required String figure,
+    this.height = 320,
+    this.title = 'Chart',
+    this.badge = 'Malloy',
+  }) : figureJson = figure,
+       url = '';
 
   @override
   State<PlotlyChart> createState() => _PlotlyChartState();
@@ -27,16 +54,23 @@ class _PlotlyChartState extends State<PlotlyChart> {
 
   Future<void> _load() async {
     try {
-      final res = await http.get(Uri.parse(widget.url));
-      if (res.statusCode != 200) {
-        throw Exception('${res.statusCode} ${res.reasonPhrase ?? ''}');
+      final String figure;
+      final inline = widget.figureJson;
+      if (inline != null) {
+        figure = inline;
+      } else {
+        final res = await http.get(Uri.parse(widget.url));
+        if (res.statusCode != 200) {
+          throw Exception('${res.statusCode} ${res.reasonPhrase ?? ''}');
+        }
+        figure = res.body;
       }
-      jsonDecode(res.body); // validate
+      jsonDecode(figure); // validate
       if (!mounted) return;
 
       final controller = WebViewController()
         // ..setBackgroundColor(Colors.white)
-        ..loadHtmlString(_buildHtml(res.body));
+        ..loadHtmlString(_buildHtml(figure));
 
       setState(() => _controller = controller);
     } catch (e) {
@@ -121,7 +155,7 @@ class _PlotlyChartState extends State<PlotlyChart> {
                 ),
                 const SizedBox(width: 8),
                 Text(
-                  'Chart',
+                  widget.title,
                   style: TextStyle(
                     fontSize: 13,
                     fontWeight: FontWeight.w600,
@@ -139,7 +173,7 @@ class _PlotlyChartState extends State<PlotlyChart> {
                     borderRadius: BorderRadius.circular(999),
                   ),
                   child: Text(
-                    'Plotly',
+                    widget.badge,
                     style: AppTheme.mono(size: 10, color: t.text3),
                   ),
                 ),

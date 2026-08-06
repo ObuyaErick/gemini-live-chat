@@ -5,8 +5,9 @@ import 'package:flutter/material.dart';
 class ThemeController {
   ThemeController._();
 
-  static final ValueNotifier<ThemeMode> mode =
-      ValueNotifier<ThemeMode>(ThemeMode.light);
+  static final ValueNotifier<ThemeMode> mode = ValueNotifier<ThemeMode>(
+    ThemeMode.light,
+  );
 
   static bool isDark(BuildContext context) {
     final m = mode.value;

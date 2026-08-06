@@ -1,10 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:webs/live_chat/models.dart';
+import 'package:webs/live_chat/widgets/attachments_view.dart';
 import 'package:webs/live_chat/widgets/plotly_chart.dart';
 
 // Splits model content on ```chart\n<file_id>\n``` slot markers and renders
 // each Plotly chart in-place within the prose (per Section 8 of the API guide).
+//
+// Attachments the prose never references — Malloy dashboards (which carry no
+// slot marker by contract), plain files, images — are rendered after the prose
+// as their own panels. Editable documents are excluded: they belong to the
+// document editor panel, not the bubble.
 class ChartMessageContent extends StatelessWidget {
   static final _slotRe = RegExp(
     r'```chart\n([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\n```',
@@ -42,10 +48,19 @@ class ChartMessageContent extends StatelessWidget {
     final byId = {for (final a in attachments) a.fileId: a};
     final segments = _parse();
 
-    if (segments.isEmpty) return const SizedBox.shrink();
+    final slotted = {
+      for (final seg in segments)
+        if (!seg.isText) seg.value,
+    };
+    final unslotted = [
+      for (final a in attachments)
+        if (!slotted.contains(a.fileId) && !a.isEditable) a,
+    ];
+
+    if (segments.isEmpty && unslotted.isEmpty) return const SizedBox.shrink();
 
     // If there are no chart slots at all, skip the split overhead.
-    if (segments.length == 1 && segments.first.isText) {
+    if (segments.length == 1 && segments.first.isText && unslotted.isEmpty) {
       return MarkdownBody(data: segments.first.value, styleSheet: styleSheet);
     }
 
@@ -65,6 +80,7 @@ class ChartMessageContent extends StatelessWidget {
               const SizedBox.shrink(),
             const SizedBox(height: 12),
           ],
+        if (unslotted.isNotEmpty) AttachmentsView(attachments: unslotted),
       ],
     );
   }

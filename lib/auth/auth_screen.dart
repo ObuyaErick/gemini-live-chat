@@ -34,9 +34,9 @@ class _AuthScreenState extends State<AuthScreen> {
       );
       await TokenService.saveToken(token);
       if (!mounted) return;
-      Navigator.of(context).pushReplacement(
-        MaterialPageRoute(builder: (_) => const LiveChat()),
-      );
+      Navigator.of(
+        context,
+      ).pushReplacement(MaterialPageRoute(builder: (_) => const LiveChat()));
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -110,9 +110,11 @@ class _AuthScreenState extends State<AuthScreen> {
                           style: const TextStyle(fontSize: 14),
                           decoration: _fieldDecoration(hint: 'you@company.com'),
                           validator: (v) {
-                            if (v == null || v.trim().isEmpty) return 'Required';
-                            if (!RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$')
-                                .hasMatch(v.trim())) {
+                            if (v == null || v.trim().isEmpty)
+                              return 'Required';
+                            if (!RegExp(
+                              r'^[^@\s]+@[^@\s]+\.[^@\s]+$',
+                            ).hasMatch(v.trim())) {
                               return 'Enter a valid email address';
                             }
                             return null;
@@ -129,10 +131,12 @@ class _AuthScreenState extends State<AuthScreen> {
                             color: Color(0xFF1F2330),
                           ),
                           items: AuthConfig.accounts
-                              .map((a) => DropdownMenuItem(
-                                    value: a,
-                                    child: Text(a.label),
-                                  ))
+                              .map(
+                                (a) => DropdownMenuItem(
+                                  value: a,
+                                  child: Text(a.label),
+                                ),
+                              )
                               .toList(),
                           onChanged: (v) => setState(() => _account = v),
                           validator: (v) => v == null ? 'Required' : null,
@@ -148,10 +152,12 @@ class _AuthScreenState extends State<AuthScreen> {
                             color: Color(0xFF1F2330),
                           ),
                           items: AuthConfig.projects
-                              .map((p) => DropdownMenuItem(
-                                    value: p,
-                                    child: Text(p.label),
-                                  ))
+                              .map(
+                                (p) => DropdownMenuItem(
+                                  value: p,
+                                  child: Text(p.label),
+                                ),
+                              )
                               .toList(),
                           onChanged: (v) => setState(() => _project = v),
                           validator: (v) => v == null ? 'Required' : null,
@@ -164,8 +170,9 @@ class _AuthScreenState extends State<AuthScreen> {
                             style: ElevatedButton.styleFrom(
                               backgroundColor: const Color(0xFF1F2330),
                               foregroundColor: Colors.white,
-                              disabledBackgroundColor:
-                                  const Color(0xFF1F2330).withValues(alpha: 0.5),
+                              disabledBackgroundColor: const Color(
+                                0xFF1F2330,
+                              ).withValues(alpha: 0.5),
                               shape: RoundedRectangleBorder(
                                 borderRadius: BorderRadius.circular(8),
                               ),
@@ -199,33 +206,32 @@ class _AuthScreenState extends State<AuthScreen> {
   }
 
   static InputDecoration _fieldDecoration({String? hint}) => InputDecoration(
-        hintText: hint,
-        hintStyle: const TextStyle(fontSize: 14, color: Color(0xFFADB5BD)),
-        contentPadding:
-            const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-        filled: true,
-        fillColor: const Color(0xFFF9FAFC),
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(8),
-          borderSide: const BorderSide(color: Color(0xFFE9EAF0)),
-        ),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(8),
-          borderSide: const BorderSide(color: Color(0xFFE9EAF0)),
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(8),
-          borderSide: const BorderSide(color: Color(0xFF1F2330)),
-        ),
-        errorBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(8),
-          borderSide: const BorderSide(color: Color(0xFFB42318)),
-        ),
-        focusedErrorBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(8),
-          borderSide: const BorderSide(color: Color(0xFFB42318)),
-        ),
-      );
+    hintText: hint,
+    hintStyle: const TextStyle(fontSize: 14, color: Color(0xFFADB5BD)),
+    contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+    filled: true,
+    fillColor: const Color(0xFFF9FAFC),
+    border: OutlineInputBorder(
+      borderRadius: BorderRadius.circular(8),
+      borderSide: const BorderSide(color: Color(0xFFE9EAF0)),
+    ),
+    enabledBorder: OutlineInputBorder(
+      borderRadius: BorderRadius.circular(8),
+      borderSide: const BorderSide(color: Color(0xFFE9EAF0)),
+    ),
+    focusedBorder: OutlineInputBorder(
+      borderRadius: BorderRadius.circular(8),
+      borderSide: const BorderSide(color: Color(0xFF1F2330)),
+    ),
+    errorBorder: OutlineInputBorder(
+      borderRadius: BorderRadius.circular(8),
+      borderSide: const BorderSide(color: Color(0xFFB42318)),
+    ),
+    focusedErrorBorder: OutlineInputBorder(
+      borderRadius: BorderRadius.circular(8),
+      borderSide: const BorderSide(color: Color(0xFFB42318)),
+    ),
+  );
 }
 
 class _Label extends StatelessWidget {
@@ -234,12 +240,12 @@ class _Label extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Text(
-        text,
-        style: const TextStyle(
-          fontSize: 12,
-          fontWeight: FontWeight.w600,
-          color: Color(0xFF1F2330),
-          letterSpacing: 0.2,
-        ),
-      );
+    text,
+    style: const TextStyle(
+      fontSize: 12,
+      fontWeight: FontWeight.w600,
+      color: Color(0xFF1F2330),
+      letterSpacing: 0.2,
+    ),
+  );
 }

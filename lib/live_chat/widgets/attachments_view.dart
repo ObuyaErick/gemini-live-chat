@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:webs/live_chat/models.dart';
+import 'package:webs/live_chat/widgets/malloy_dashboard_view.dart';
 import 'package:webs/live_chat/widgets/plotly_chart.dart';
 import 'package:webs/ui/core/app_theme.dart';
 
@@ -16,14 +17,21 @@ class AttachmentsView extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         for (final a in attachments)
-          Padding(
-            padding: const EdgeInsets.only(top: 12),
-            child: a.isPlotlyJson
-                ? PlotlyChart(url: a.url)
-                : _DownloadLink(attachment: a),
-          ),
+          Padding(padding: const EdgeInsets.only(top: 12), child: _render(a)),
       ],
     );
+  }
+
+  /// Branches on the semantic `kind`, not the mime type — `plotly` and `malloy`
+  /// are both JSON but render completely differently (consumer guide §8).
+  Widget _render(Attachment a) {
+    // Without a resolved URL there is nothing to fetch; fall through to the
+    // chip, which degrades to a non-linked filename.
+    if (a.hasUrl) {
+      if (a.isMalloyDashboard) return MalloyDashboardView(url: a.url);
+      if (a.isPlotlyJson) return PlotlyChart(url: a.url);
+    }
+    return _DownloadLink(attachment: a);
   }
 }
 
@@ -72,17 +80,21 @@ class _DownloadLink extends StatelessWidget {
       borderRadius: BorderRadius.circular(11),
       child: InkWell(
         borderRadius: BorderRadius.circular(11),
-        onTap: () {
-          Clipboard.setData(ClipboardData(text: attachment.url));
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Link copied to clipboard'),
-              duration: Duration(seconds: 2),
-              behavior: SnackBarBehavior.floating,
-              width: 220,
-            ),
-          );
-        },
+        // No URL means resolution failed server-side — leave the chip inert
+        // rather than copying an empty link.
+        onTap: !attachment.hasUrl
+            ? null
+            : () {
+                Clipboard.setData(ClipboardData(text: attachment.url));
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Link copied to clipboard'),
+                    duration: Duration(seconds: 2),
+                    behavior: SnackBarBehavior.floating,
+                    width: 220,
+                  ),
+                );
+              },
         child: Container(
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(11),
@@ -131,7 +143,13 @@ class _DownloadLink extends StatelessWidget {
                   ],
                 ),
               ),
-              Icon(Icons.open_in_new_rounded, size: 16, color: t.text3),
+              Icon(
+                attachment.hasUrl
+                    ? Icons.open_in_new_rounded
+                    : Icons.link_off_rounded,
+                size: 16,
+                color: t.text3,
+              ),
             ],
           ),
         ),

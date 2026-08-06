@@ -91,10 +91,10 @@ class AppTokens extends ThemeExtension<AppTokens> {
 
   /// The signature avatar / brand gradient.
   LinearGradient get accentGradient => LinearGradient(
-        begin: Alignment.topLeft,
-        end: Alignment.bottomRight,
-        colors: [accent, const Color(0xFFC9B6FF)],
-      );
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+    colors: [accent, const Color(0xFFC9B6FF)],
+  );
 
   static const AppTokens light = AppTokens(
     docBg: Color(0xFFE6E6EC),
@@ -125,9 +125,19 @@ class AppTokens extends ThemeExtension<AppTokens> {
     diffAddLine: Color(0xFF199A56),
     diffDel: Color(0x1CD13D3D),
     diffDelLine: Color(0xFFD13D3D),
-    e1: [BoxShadow(color: Color(0x0F161628), blurRadius: 2, offset: Offset(0, 1))],
-    e2: [BoxShadow(color: Color(0x17161628), blurRadius: 18, offset: Offset(0, 4))],
-    e3: [BoxShadow(color: Color(0x29161628), blurRadius: 48, offset: Offset(0, 16))],
+    e1: [
+      BoxShadow(color: Color(0x0F161628), blurRadius: 2, offset: Offset(0, 1)),
+    ],
+    e2: [
+      BoxShadow(color: Color(0x17161628), blurRadius: 18, offset: Offset(0, 4)),
+    ],
+    e3: [
+      BoxShadow(
+        color: Color(0x29161628),
+        blurRadius: 48,
+        offset: Offset(0, 16),
+      ),
+    ],
   );
 
   static const AppTokens dark = AppTokens(
@@ -159,9 +169,19 @@ class AppTokens extends ThemeExtension<AppTokens> {
     diffAddLine: Color(0xFF39C583),
     diffDel: Color(0x24EF6A6A),
     diffDelLine: Color(0xFFEF6A6A),
-    e1: [BoxShadow(color: Color(0x80000000), blurRadius: 2, offset: Offset(0, 1))],
-    e2: [BoxShadow(color: Color(0x8C000000), blurRadius: 28, offset: Offset(0, 8))],
-    e3: [BoxShadow(color: Color(0xB3000000), blurRadius: 64, offset: Offset(0, 24))],
+    e1: [
+      BoxShadow(color: Color(0x80000000), blurRadius: 2, offset: Offset(0, 1)),
+    ],
+    e2: [
+      BoxShadow(color: Color(0x8C000000), blurRadius: 28, offset: Offset(0, 8)),
+    ],
+    e3: [
+      BoxShadow(
+        color: Color(0xB3000000),
+        blurRadius: 64,
+        offset: Offset(0, 24),
+      ),
+    ],
   );
 
   @override
@@ -224,24 +244,24 @@ class AppTheme {
         ? ThemeData.dark(useMaterial3: true)
         : ThemeData.light(useMaterial3: true);
 
-    final textTheme = GoogleFonts.soraTextTheme(base.textTheme).apply(
-      bodyColor: t.text1,
-      displayColor: t.text1,
-    );
+    final textTheme = GoogleFonts.soraTextTheme(
+      base.textTheme,
+    ).apply(bodyColor: t.text1, displayColor: t.text1);
 
-    final scheme = ColorScheme.fromSeed(
-      seedColor: t.accent,
-      brightness: brightness,
-    ).copyWith(
-      primary: t.accent,
-      onPrimary: t.onAccent,
-      surface: t.bgApp,
-      onSurface: t.text1,
-      onSurfaceVariant: t.text2,
-      outline: t.borderStrong,
-      outlineVariant: t.border,
-      error: t.danger,
-    );
+    final scheme =
+        ColorScheme.fromSeed(
+          seedColor: t.accent,
+          brightness: brightness,
+        ).copyWith(
+          primary: t.accent,
+          onPrimary: t.onAccent,
+          surface: t.bgApp,
+          onSurface: t.text1,
+          onSurfaceVariant: t.text2,
+          outline: t.borderStrong,
+          outlineVariant: t.border,
+          error: t.danger,
+        );
 
     return base.copyWith(
       colorScheme: scheme,
@@ -293,11 +313,10 @@ class AppTheme {
     FontWeight weight = FontWeight.w500,
     Color? color,
     double? letterSpacing,
-  }) =>
-      GoogleFonts.jetBrainsMono(
-        fontSize: size,
-        fontWeight: weight,
-        color: color,
-        letterSpacing: letterSpacing,
-      );
+  }) => GoogleFonts.jetBrainsMono(
+    fontSize: size,
+    fontWeight: weight,
+    color: color,
+    letterSpacing: letterSpacing,
+  );
 }
