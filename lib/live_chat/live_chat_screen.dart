@@ -229,6 +229,7 @@ class _LiveChatState extends State<LiveChat> {
               onSubmit: _provider.sendElicitResponse,
             ),
           ),
+
         InputBar(
           controller: _inputController,
           enabled: _provider.isConnected && !_provider.isWaitingForResponse,

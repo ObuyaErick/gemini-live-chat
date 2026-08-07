@@ -5,7 +5,7 @@ import 'package:webs/ui/core/app_theme.dart';
 /// Right-side panel that displays and edits `kind: "editable"` documents.
 ///
 /// The parent owns the [documents] map and applies `text_diff` ops via
-/// [TextDocument.applyOps]. This widget owns one [TextEditingController] per
+/// [TextDocument.applyDiff]. This widget owns one [TextEditingController] per
 /// document and syncs controllers whenever the server increments a version.
 class DocumentEditorPanel extends StatefulWidget {
   final Map<String, TextDocument> documents;
@@ -18,9 +18,16 @@ class DocumentEditorPanel extends StatefulWidget {
   /// [newText] is the full committed text so the parent can call resetFromResync.
   final void Function(String fileId, String diff, String newText) onUserEdit;
 
-  /// Pending AI-proposed diffs awaiting user accept/reject. Keyed by file_id.
+  /// Diffs from agent edits already applied to [documents], shown with an
+  /// undo affordance. Keyed by file_id.
   final Map<String, String> pendingProposals;
+
+  /// Dismisses the undo banner — the edit is already applied, so this sends
+  /// nothing to the server.
   final void Function(String fileId) onAcceptProposal;
+
+  /// Undoes an already-committed agent edit by restoring `old_value` and
+  /// relaying it as a manual `document_edit`.
   final void Function(String fileId) onRejectProposal;
 
   const DocumentEditorPanel({
@@ -370,7 +377,7 @@ class _ProposalBanner extends StatelessWidget {
                     TextSpan(
                       children: [
                         TextSpan(
-                          text: 'Proposed changes  ',
+                          text: 'Agent edited this document  ',
                           style: TextStyle(
                             fontSize: 12.5,
                             fontWeight: FontWeight.w600,
@@ -401,7 +408,7 @@ class _ProposalBanner extends StatelessWidget {
                       borderRadius: BorderRadius.circular(8),
                     ),
                   ),
-                  child: const Text('Reject', style: TextStyle(fontSize: 12)),
+                  child: const Text('Undo', style: TextStyle(fontSize: 12)),
                 ),
                 const SizedBox(width: 6),
                 FilledButton(
@@ -421,7 +428,7 @@ class _ProposalBanner extends StatelessWidget {
                       borderRadius: BorderRadius.circular(8),
                     ),
                   ),
-                  child: const Text('Accept all'),
+                  child: const Text('Keep'),
                 ),
               ],
             ),

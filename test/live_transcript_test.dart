@@ -1,47 +1,11 @@
 import 'dart:convert';
 import 'dart:io';
-import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:webs/live_chat/models.dart';
 import 'package:webs/live_chat/providers/live_chat_provider.dart';
-import 'package:webs/live_chat/services/chat_socket_service.dart';
-import 'package:webs/live_chat/services/pcm_audio_player.dart';
 
-/// Socket stand-in: captures the provider's frame handler so a test can push
-/// server frames without opening a channel.
-class _FakeSocket extends ChatSocketService {
-  void Function(Map<String, dynamic> frame)? _onFrame;
-
-  @override
-  Future<void> connect({
-    required String url,
-    required void Function(Map<String, dynamic> frame) onFrame,
-    required void Function(Object error) onError,
-    required void Function() onDone,
-  }) async {
-    _onFrame = onFrame;
-  }
-
-  @override
-  bool send(Map<String, dynamic> payload) => true;
-
-  @override
-  Future<void> disconnect() async {}
-
-  void emit(Map<String, dynamic> frame) => _onFrame!(frame);
-}
-
-class _SilentAudioPlayer extends PcmAudioPlayer {
-  @override
-  Future<void> play(Uint8List pcm, {int sampleRate = 16000}) async {}
-
-  @override
-  Future<void> stop() async {}
-
-  @override
-  void dispose() {}
-}
+import 'live_chat_fakes.dart';
 
 /// Server frames captured from a real live-mode turn (`messages.dev.json`, a
 /// HAR export). Replaying the actual capture keeps this test honest about the
@@ -64,14 +28,16 @@ void main() {
   // platform channels even though this test never plays anything.
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  late _FakeSocket socket;
+  late FakeChatSocket socket;
   late LiveChatProvider provider;
 
   setUp(() async {
-    socket = _FakeSocket();
+    socket = FakeChatSocket();
     provider = LiveChatProvider(
       socket: socket,
-      audioPlayer: _SilentAudioPlayer(),
+      audioPlayer: SilentAudioPlayer(),
+      // The capture replays mode_changed → live, which opens the mic.
+      micStreamer: FakeMicStreamer(),
     );
     await provider.connect();
   });

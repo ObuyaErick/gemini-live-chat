@@ -10,29 +10,35 @@ import 'package:webs/live_chat/models.dart';
 import 'package:webs/live_chat/providers/live_chat_ui_event.dart';
 import 'package:webs/live_chat/services/agent_service.dart';
 import 'package:webs/live_chat/services/chat_socket_service.dart';
+import 'package:webs/live_chat/services/mic_streamer.dart';
 import 'package:webs/live_chat/services/pcm_audio_player.dart';
 import 'package:webs/models/agent_models.dart';
+
+enum ChatMode {
+  live,
+  standard;
+
+  bool get isLive => this == ChatMode.live;
+  bool get isStandard => this == ChatMode.standard;
+}
 
 /// The single source of truth for a live-chat surface: the `/chat/` connection,
 /// the transcript, tool/action/clarification state, editable documents, live
 /// (voice) mode, the agent roster, and the session list.
-///
-/// Layering (per CLAUDE.md): the widget tree only reads this provider's state
-/// and calls its intent methods; all socket I/O goes through
-/// [ChatSocketService] and audio through [PcmAudioPlayer]. The provider holds
-/// no [BuildContext] — one-shot UI effects (snackbars, scroll) are surfaced on
-/// [uiEvents].
 class LiveChatProvider extends ChangeNotifier {
   LiveChatProvider({
     ChatSocketService? socket,
     PcmAudioPlayer? audioPlayer,
+    MicStreamer? micStreamer,
     AgentService? agentService,
   }) : _socket = socket ?? ChatSocketService(),
        _audioPlayer = audioPlayer ?? PcmAudioPlayer(),
+       _micStreamer = micStreamer ?? MicStreamer(),
        _agentService = agentService ?? AgentService();
 
   final ChatSocketService _socket;
   final PcmAudioPlayer _audioPlayer;
+  final MicStreamer _micStreamer;
   final AgentService _agentService;
   final StreamController<LiveChatUiEvent> _uiEvents =
       StreamController<LiveChatUiEvent>.broadcast();
@@ -42,23 +48,13 @@ class LiveChatProvider extends ChangeNotifier {
   Agent? _selectedAgent;
   ChatContext? _chatContext;
 
-  // The agent named in the connect URL — the session's *initial* agent (v12
-  // §6.7). Only changes when we open a new socket (new/selected session).
-  String _agentId = 'concierge';
-
-  // The agent the server is currently routing turns to for this shared session.
-  // Starts as the connect agent and moves on `agent_switched`. `agent_id` is
-  // sticky, so [sendMessage] only sends it while [_selectedAgent] differs.
-  String? _activeAgentId;
-
   // Bumped on every (re)connect. Socket callbacks capture the generation they
   // were registered under and ignore events from a superseded channel.
   int _connectionGeneration = 0;
-
+  ChatMode? _chatMode;
   bool _isConnected = false;
   String? _connectionError;
   bool _isWaitingForResponse = false;
-  bool _isInLiveMode = false;
 
   // ---- Conversation --------------------------------------------------------
   final List<ChatMessage> _messages = [];
@@ -70,9 +66,8 @@ class LiveChatProvider extends ChangeNotifier {
   // ---- Editable documents --------------------------------------------------
   final Map<String, TextDocument> _openDocuments = {};
   String? _activeDocumentFileId;
-  // AI-proposed diffs awaiting accept/reject (text_diff is always a proposal).
   final Map<String, String> _pendingProposals = {};
-  final Map<String, int> _proposalFromVersions = {};
+  final Map<String, String> _pendingOldValues = {};
 
   // ---- Staged uploads ------------------------------------------------------
   final List<LocalFileAttachment> _stagedFiles = [];
@@ -80,14 +75,6 @@ class LiveChatProvider extends ChangeNotifier {
   // ---- Live-mode audio -----------------------------------------------------
   final List<int> _pendingAudioBytes = [];
   int _liveAudioSampleRate = 16000;
-
-  /// The spoken line currently being transcribed, model or user.
-  ///
-  /// `output_transcript` / `input_transcript` stream as `is_delta: true` chunks
-  /// closed by one `is_delta: false` frame carrying the whole line, so the
-  /// chunks fold into this bubble instead of each spawning their own. Kept
-  /// separate from [_streamingMessage] because `final` mutates that one
-  /// (status + attachments) and live turns still emit `final`.
   ChatMessage? _transcriptMessage;
 
   // ---- Sessions ------------------------------------------------------------
@@ -126,13 +113,16 @@ class LiveChatProvider extends ChangeNotifier {
 
   List<Agent> get agents => List.unmodifiable(_agents);
   Agent? get selectedAgent => _selectedAgent;
+  String? get activeAgentId => _selectedAgent?.agentId;
   List<SuggestedQuestion> get suggestedQuestions =>
       _selectedAgent?.suggestedQuestions ?? const [];
 
   bool get isConnected => _isConnected;
   String? get connectionError => _connectionError;
   bool get isWaitingForResponse => _isWaitingForResponse;
-  bool get isInLiveMode => _isInLiveMode;
+  bool get isInLiveMode => _chatMode?.isLive ?? false;
+
+  bool get isMicStreaming => _micStreamer.isStreaming;
 
   List<ChatMessage> get messages => List.unmodifiable(_messages);
   List<ToolEvent> get activeToolEvents => List.unmodifiable(_activeToolEvents);
@@ -164,23 +154,14 @@ class LiveChatProvider extends ChangeNotifier {
 
   // ---- Lifecycle -----------------------------------------------------------
 
-  /// Wires the optional module context, loads the agent roster and session
-  /// list, and opens the connection to the concierge. Call once from the
-  /// screen's `initState`. Agents load in parallel with the connection — the
-  /// concierge id is fixed, so we don't wait for the roster to connect.
   void initialize({ChatContext? chatContext}) {
     _chatContext = chatContext;
-    _agentId = 'concierge';
-    _activeAgentId = 'concierge';
     loadAgents();
     loadSessions();
     connect();
   }
 
-  /// Fetches the agent roster from `GET /agents`. On failure the picker is left
-  /// empty and the error is surfaced — the concierge connection still works
-  /// since its id is fixed. Keeps the current selection when it survives the
-  /// refresh, else defaults to the concierge.
+  /// Fetches the agent roster from `GET /agents`.
   Future<void> loadAgents() async {
     try {
       _agents = await _agentService.fetchAgents();
@@ -204,6 +185,7 @@ class LiveChatProvider extends ChangeNotifier {
   void dispose() {
     _connectionGeneration++;
     _socket.disconnect();
+    _micStreamer.dispose();
     _audioPlayer.dispose();
     _uiEvents.close();
     super.dispose();
@@ -215,8 +197,8 @@ class LiveChatProvider extends ChangeNotifier {
     final gen = ++_connectionGeneration;
     _connectionError = null;
     _isConnected = false;
-    // Fresh baseline for this connection; refined from history for resumes.
-    _activeAgentId = _agentId;
+    final agentId = _selectedAgent?.agentId ?? 'concierge';
+    _selectedAgent ??= _agentById(agentId);
     notifyListeners();
 
     try {
@@ -226,7 +208,7 @@ class LiveChatProvider extends ChangeNotifier {
         'token': ApiClient.token,
       }..removeWhere((_, v) => v == null);
       final query = params.entries.map((e) => '${e.key}=${e.value}').join('&');
-      final url = '${ApiClient.baseWebsocketUrl}/chat/$_agentId?$query';
+      final url = '${ApiClient.baseWebsocketUrl}/chat/$agentId?$query';
 
       await _socket.connect(
         url: url,
@@ -250,11 +232,11 @@ class LiveChatProvider extends ChangeNotifier {
   void disconnect() {
     _connectionGeneration++;
     _socket.disconnect();
+    _stopMicStream();
     _pendingAudioBytes.clear();
     _audioPlayer.stop();
     _isConnected = false;
     _isWaitingForResponse = false;
-    _isInLiveMode = false;
     _streamingMessage = null;
     _closeTranscript();
     _pendingAction = null;
@@ -263,26 +245,18 @@ class LiveChatProvider extends ChangeNotifier {
     _openDocuments.clear();
     _activeDocumentFileId = null;
     _pendingProposals.clear();
-    _proposalFromVersions.clear();
+    _pendingOldValues.clear();
     notifyListeners();
   }
 
   void _pushContextIfApplicable() {
     final ctx = _chatContext;
-    // Keyed on the connection agent, not the (possibly still-loading) selection.
-    if (ctx == null || _agentId != 'concierge') return;
-    // Non-fatal: a broken socket surfaces via the regular error path.
+    if (ctx == null || _selectedAgent?.isGlobal == true) return;
     _socket.send({'context': ctx.toJson()});
   }
 
   // ---- Agent / session selection ------------------------------------------
 
-  /// Hand the conversation to [agent] (v12 §6.7). This does **not** open a new
-  /// socket or start a new session — a session is a shared transcript. We keep
-  /// the same connection and transcript and send the chosen `agent_id` on the
-  /// next user turn ([sendMessage]); the server confirms with `agent_switched`
-  /// and the incoming agent inherits the full prior transcript. `agent_id` is
-  /// sticky, so it is only sent while the selection differs from [_activeAgentId].
   void switchAgent(Agent agent) {
     if (_selectedAgent?.agentId == agent.agentId) return;
     _selectedAgent = agent;
@@ -290,16 +264,15 @@ class LiveChatProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Resume an existing shared session. Reconnects bound to the session's
-  /// initial agent; the last participant is restored from the history replay.
+  /// Resume an existing shared session.
   void selectSession(ChatSession session) {
     if (_currentSessionId == session.sessionId) return;
     _resetConversationState();
     _currentSessionId = session.sessionId;
-    final sessionAgentId = session.agentId;
-    if (sessionAgentId != null) {
-      _agentId = sessionAgentId;
-      _selectedAgent = _agentById(sessionAgentId) ?? _selectedAgent;
+    final lastParticipatingAgentId =
+        session.participantAgents.lastOrNull ?? session.agentId;
+    if (lastParticipatingAgentId != null) {
+      _selectedAgent = _agentById(lastParticipatingAgentId) ?? _selectedAgent;
     }
     notifyListeners();
     connect();
@@ -309,12 +282,12 @@ class LiveChatProvider extends ChangeNotifier {
   void newSession() {
     _resetConversationState();
     _currentSessionId = null;
-    _agentId = _selectedAgent?.agentId ?? _agentId;
     notifyListeners();
     connect();
   }
 
   void _resetConversationState() {
+    _stopMicStream();
     _messages.clear();
     _activeToolEvents.clear();
     _streamingMessage = null;
@@ -322,12 +295,11 @@ class LiveChatProvider extends ChangeNotifier {
     _pendingAction = null;
     _pendingClarification = null;
     _isWaitingForResponse = false;
-    _isInLiveMode = false;
     _connectionError = null;
     _openDocuments.clear();
     _activeDocumentFileId = null;
     _pendingProposals.clear();
-    _proposalFromVersions.clear();
+    _pendingOldValues.clear();
     _stagedFiles.clear();
     _pendingAudioBytes.clear();
   }
@@ -418,7 +390,12 @@ class LiveChatProvider extends ChangeNotifier {
 
   void sendMessage(String text) {
     final trimmed = text.trim();
-    if (trimmed.isEmpty || !_isConnected || _isWaitingForResponse) return;
+    if (trimmed.isEmpty || !_isConnected) return;
+    if (isInLiveMode) {
+      _sendLiveText(trimmed);
+      return;
+    }
+    if (_isWaitingForResponse) return;
 
     final files = _stagedFiles.toList();
     _messages.add(
@@ -470,6 +447,23 @@ class LiveChatProvider extends ChangeNotifier {
     }
   }
 
+  void _sendLiveText(String trimmed) {
+    try {
+      if (!_socket.send({'text': trimmed})) {
+        throw StateError('no active connection');
+      }
+    } catch (e) {
+      _messages.add(
+        ChatMessage(
+          role: MessageRole.assistant,
+          content: 'Failed to send: $e',
+          status: MessageStatus.error,
+        ),
+      );
+      notifyListeners();
+    }
+  }
+
   void confirmAction() => _sendActionDecision(confirmed: true);
   void cancelAction() => _sendActionDecision(confirmed: false);
 
@@ -497,12 +491,15 @@ class LiveChatProvider extends ChangeNotifier {
   }
 
   void startLiveMode() {
-    if (!_isConnected || _isInLiveMode || _isWaitingForResponse) return;
+    if (!_isConnected || isInLiveMode || _isWaitingForResponse) return;
     _socket.send({'type': 'start_live'});
   }
 
   void endLiveMode() {
-    if (!_isConnected || !_isInLiveMode) return;
+    if (!_isConnected || !isInLiveMode) return;
+    // Close the mic now rather than waiting for `mode_changed`, so the
+    // recording indicator clears the moment the user asks it to.
+    _stopMicStream();
     _socket.send({'end_live': true});
   }
 
@@ -516,7 +513,7 @@ class LiveChatProvider extends ChangeNotifier {
   void closeDocument(String fileId) {
     _openDocuments.remove(fileId);
     _pendingProposals.remove(fileId);
-    _proposalFromVersions.remove(fileId);
+    _pendingOldValues.remove(fileId);
     if (_activeDocumentFileId == fileId) {
       _activeDocumentFileId = _openDocuments.isEmpty
           ? null
@@ -525,27 +522,36 @@ class LiveChatProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Accept an AI-proposed diff. Applies it locally and advances the version;
-  /// the server copy is unchanged until a `document_edit` is relayed (kept
-  /// disabled here, matching the prior behaviour of local-only apply).
+  /// Dismiss the undo banner for an agent edit. The edit is already applied
+  /// and committed server-side by the time `text_diff` arrives (guide's
+  /// 2026-07-13 deviation from the staged accept/reject design) — there is
+  /// nothing to send here, "accept" just clears the affordance.
   void acceptProposal(String fileId) {
-    final diff = _pendingProposals[fileId];
-    if (diff == null || diff.isEmpty) return;
-    final fromVersion = _proposalFromVersions[fileId] ?? 0;
-    _openDocuments[fileId]?.applyDiff(
-      diff,
-      fromVersion: fromVersion,
-      toVersion: fromVersion + 1,
-    );
     _pendingProposals.remove(fileId);
-    _proposalFromVersions.remove(fileId);
+    _pendingOldValues.remove(fileId);
     notifyListeners();
-    // _sendDocumentEdit(fileId, diff, origin: 'agent');
   }
 
+  /// Undo an already-committed agent edit. Since the change was never staged
+  /// server-side, there is no "reject" verb on the wire (§5.4): restore
+  /// `old_value` locally and relay that restoration as an ordinary manual
+  /// `document_edit`, exactly as if the user had typed it back themselves.
   void rejectProposal(String fileId) {
+    final oldValue = _pendingOldValues[fileId];
+    final doc = _openDocuments[fileId];
     _pendingProposals.remove(fileId);
-    _proposalFromVersions.remove(fileId);
+    _pendingOldValues.remove(fileId);
+    if (oldValue != null && doc != null) {
+      final diff = TextDocument.generateDiff(
+        doc.filename,
+        doc.content,
+        oldValue,
+      );
+      if (diff.isNotEmpty) {
+        _sendDocumentEdit(fileId, diff);
+        doc.resetFromResync(oldValue, doc.version + 1);
+      }
+    }
     notifyListeners();
   }
 
@@ -724,8 +730,7 @@ class LiveChatProvider extends ChangeNotifier {
         final c = (payload['content'] as Map?)?.cast<String, dynamic>() ?? {};
         final toAgentId = c['to_agent_id'] as String?;
         final toAgentName = c['agent_name'] as String?;
-        if (toAgentId != null) {
-          _activeAgentId = toAgentId;
+        if (toAgentId != null && _selectedAgent?.agentId != toAgentId) {
           _selectedAgent = _agentById(toAgentId) ?? _selectedAgent;
           notifyListeners();
         }
@@ -754,7 +759,7 @@ class LiveChatProvider extends ChangeNotifier {
             role: MessageRole.assistant,
             content: chunk,
             status: MessageStatus.streaming,
-            agentId: _activeAgentId,
+            agentId: _selectedAgent?.agentId,
           );
           _messages.add(_streamingMessage!);
         } else {
@@ -773,9 +778,7 @@ class LiveChatProvider extends ChangeNotifier {
           _streamingMessage = null;
         } else {
           final content = payload['content'] as String? ?? '';
-          // In live mode `final` carries an empty content with the turn's
-          // attachments (guide §9.3) — still surface it so charts and Malloy
-          // dashboards produced during voice aren't dropped.
+
           if (content.isNotEmpty || attachments.isNotEmpty) {
             _messages.add(
               ChatMessage(
@@ -783,7 +786,7 @@ class LiveChatProvider extends ChangeNotifier {
                 content: content,
                 status: MessageStatus.complete,
                 attachments: attachments,
-                agentId: _activeAgentId,
+                agentId: activeAgentId,
               ),
             );
           }
@@ -806,7 +809,7 @@ class LiveChatProvider extends ChangeNotifier {
             status: MessageStatus.complete,
             imageBytes: base64Decode(data),
             imageMimeType: c['mime_type'] as String? ?? 'image/png',
-            agentId: _activeAgentId,
+            agentId: activeAgentId,
           ),
         );
         notifyListeners();
@@ -833,8 +836,15 @@ class LiveChatProvider extends ChangeNotifier {
         } else if (mode != 'live') {
           _pendingAudioBytes.clear();
         }
-        _isInLiveMode = mode == 'live';
-        if (mode != 'live') _closeTranscript();
+        _chatMode = mode == 'live' ? ChatMode.live : ChatMode.standard;
+        // The mic follows the server's confirmation, not the button press —
+        // capturing before the server is in live mode would drop the audio.
+        if (mode == 'live') {
+          _startMicStream();
+        } else {
+          _closeTranscript();
+          _stopMicStream();
+        }
         if (mode == 'standard') _isWaitingForResponse = false;
         notifyListeners();
 
@@ -852,26 +862,44 @@ class LiveChatProvider extends ChangeNotifier {
       case 'input_transcript':
         _handleTranscript(payload, MessageRole.user);
 
+      case 'interrupted':
+        _audioPlayer.stop();
+        _pendingAudioBytes.clear();
+        _closeTranscript();
+        notifyListeners();
+
       case 'turn_complete':
         if (_pendingAudioBytes.isNotEmpty) _flushAudio();
         _closeTranscript();
 
       case 'executable_code':
       case 'code_execution_result':
-        // Informational native-code-execution frames — the human-facing answer
-        // always follows in delta/final; drop silently.
         break;
 
       case 'text_diff':
-        // text_diff is ALWAYS a proposal — render for accept/reject; never apply.
         final c = (payload['content'] as Map?)?.cast<String, dynamic>() ?? {};
         final fileId = c['file_id'] as String?;
-        if (fileId == null || !_openDocuments.containsKey(fileId)) return;
+        final doc = fileId == null ? null : _openDocuments[fileId];
+        if (doc == null) return;
         final diff = c['diff'] as String? ?? '';
-        if (diff.isEmpty) return;
-        _pendingProposals[fileId] = diff;
-        _proposalFromVersions[fileId] =
-            (c['from_version'] as num?)?.toInt() ?? 0;
+        final toVersion = (c['to_version'] as num?)?.toInt() ?? doc.version;
+        final newValue = c['new_value'] as String?;
+        final oldValue = c['old_value'] as String?;
+        if (newValue != null) {
+          doc.resetFromResync(newValue, toVersion);
+        } else if (diff.isNotEmpty) {
+          doc.applyDiff(
+            diff,
+            fromVersion: (c['from_version'] as num?)?.toInt() ?? doc.version,
+            toVersion: toVersion,
+          );
+        }
+        // Keep the pre-edit body around only so the user can undo — a purely
+        // presentational affordance now that the change is already committed.
+        if (diff.isNotEmpty && oldValue != null) {
+          _pendingProposals[fileId!] = diff;
+          _pendingOldValues[fileId] = oldValue;
+        }
         _activeDocumentFileId = fileId;
         notifyListeners();
 
@@ -883,11 +911,11 @@ class LiveChatProvider extends ChangeNotifier {
         _streamingMessage?.status = MessageStatus.error;
         _streamingMessage = null;
         _closeTranscript();
+        _stopMicStream();
         _activeToolEvents.clear();
         _pendingAction = null;
         _pendingClarification = null;
         _isWaitingForResponse = false;
-        _isInLiveMode = false;
         _messages.add(
           ChatMessage(
             role: MessageRole.assistant,
@@ -900,16 +928,6 @@ class LiveChatProvider extends ChangeNotifier {
     }
   }
 
-  /// Folds a live-mode `*_transcript` frame into the open spoken line.
-  ///
-  /// Chunks carry `is_delta: true` and append to [_transcriptMessage]; the
-  /// closing `is_delta: false` frame carries the complete line and *replaces*
-  /// whatever the chunks accumulated, since it is the authoritative text. A
-  /// frame without `is_delta` is a whole line on its own (the shape documented
-  /// in guide §5.4), so it stands as its own bubble.
-  ///
-  /// [role] separates the model's line from the user's; a speaker change closes
-  /// the open line rather than appending across speakers.
   void _handleTranscript(Map<String, dynamic> payload, MessageRole role) {
     final text = payload['content'] as String? ?? '';
     if (text.isEmpty) return;
@@ -927,7 +945,7 @@ class LiveChatProvider extends ChangeNotifier {
         content: text,
         status: isDelta ? MessageStatus.streaming : MessageStatus.complete,
         isTranscript: true,
-        agentId: role == MessageRole.assistant ? _activeAgentId : null,
+        agentId: role == MessageRole.assistant ? activeAgentId : null,
       );
       _messages.add(line);
     } else if (isDelta) {
@@ -942,17 +960,11 @@ class LiveChatProvider extends ChangeNotifier {
     _emit(const ScrollToBottom());
   }
 
-  /// Seals the open spoken line so the next transcript frame starts a new
-  /// bubble. Safe to call when nothing is open.
   void _closeTranscript() {
     _transcriptMessage?.status = MessageStatus.complete;
     _transcriptMessage = null;
   }
 
-  /// Transcript chunks arrive pre-trimmed — `"Hello! How"`, `"can I"`, `"help"`
-  /// — so a raw concat reads "Howcan Ihelp". Re-insert the word break; a bad
-  /// guess only shows while the line streams, because the closing non-delta
-  /// frame overwrites it with the server's own text.
   String _appendTranscriptChunk(String buffer, String chunk) {
     if (buffer.isEmpty) return chunk;
     final needsSpace =
@@ -960,15 +972,13 @@ class LiveChatProvider extends ChangeNotifier {
     return needsSpace ? '$buffer $chunk' : buffer + chunk;
   }
 
-  /// Chunks opening with these need no word break inserted before them.
   static final _leadingPunctuation = RegExp(r"""^[\s,.!?;:)\]}%…'’"”]""");
 
   void _handleHistory(Map<String, dynamic> payload) {
     final content =
         (payload['content'] as Map?)?.cast<String, dynamic>() ?? const {};
     final historyAgentId = content['agent_id'] as String?;
-    if (historyAgentId != null && historyAgentId != _agentId) {
-      // Stale frame from a previous agent connection — ignore.
+    if (historyAgentId != null && historyAgentId != activeAgentId) {
       return;
     }
     final entries = (content['data'] as List?) ?? const [];
@@ -976,7 +986,6 @@ class LiveChatProvider extends ChangeNotifier {
     _messages
       ..clear()
       ..addAll(
-        // role: "edit" entries are document diffs, not chat bubbles — skip.
         entries
             .whereType<Map>()
             .where((raw) {
@@ -996,7 +1005,6 @@ class LiveChatProvider extends ChangeNotifier {
             }),
       );
     _streamingMessage = null;
-    // The replay rebuilt _messages, so any open line is no longer in the list.
     _transcriptMessage = null;
     _activeToolEvents.clear();
     _pendingAction = null;
@@ -1006,7 +1014,6 @@ class LiveChatProvider extends ChangeNotifier {
     // Reflect who last answered so the affordance + sticky agent_id are correct.
     for (final m in _messages.reversed) {
       if (m.agentId != null) {
-        _activeAgentId = m.agentId;
         _selectedAgent = _agentById(m.agentId) ?? _selectedAgent;
         break;
       }
@@ -1051,7 +1058,7 @@ class LiveChatProvider extends ChangeNotifier {
     final text = c['text'] as String? ?? '';
     // A resync supersedes any pending proposal for this document.
     _pendingProposals.remove(fileId);
-    _proposalFromVersions.remove(fileId);
+    _pendingOldValues.remove(fileId);
     final existing = _openDocuments[fileId];
     if (existing != null) {
       existing.resetFromResync(text, version);
@@ -1074,10 +1081,10 @@ class LiveChatProvider extends ChangeNotifier {
     _audioPlayer.stop();
     _isConnected = false;
     _isWaitingForResponse = false;
-    _isInLiveMode = false;
     _connectionError = 'WebSocket error: $error';
     _streamingMessage = null;
     _closeTranscript();
+    _stopMicStream();
     _activeToolEvents.clear();
     notifyListeners();
   }
@@ -1087,9 +1094,9 @@ class LiveChatProvider extends ChangeNotifier {
     _pendingAudioBytes.clear();
     _isConnected = false;
     _isWaitingForResponse = false;
-    _isInLiveMode = false;
     _streamingMessage = null;
     _closeTranscript();
+    _stopMicStream();
     _activeToolEvents.clear();
     notifyListeners();
   }
@@ -1102,6 +1109,39 @@ class LiveChatProvider extends ChangeNotifier {
       sampleRate: _liveAudioSampleRate,
     );
     _pendingAudioBytes.clear();
+  }
+
+  /// Opens the mic and streams it to the server for the duration of live mode.
+  Future<void> _startMicStream() async {
+    final gen = _connectionGeneration;
+    try {
+      await _micStreamer.start(
+        onChunk: _sendAudioChunk,
+        onError: (e) => debugPrint('[mic] $e'),
+      );
+    } on MicrophoneUnavailableException catch (e) {
+      if (gen != _connectionGeneration) return;
+      _emit(ShowSnackBar('$e', dismissible: true));
+      endLiveMode();
+      return;
+    }
+    if (gen != _connectionGeneration || !isInLiveMode) {
+      // Live mode ended (or the socket was replaced) while permission was pending
+      await _micStreamer.stop();
+      return;
+    }
+    notifyListeners();
+  }
+
+  void _stopMicStream() {
+    if (!_micStreamer.isStreaming) return;
+    _micStreamer.stop();
+    notifyListeners();
+  }
+
+  void _sendAudioChunk(Uint8List chunk) {
+    if (!_isConnected || !isInLiveMode || chunk.isEmpty) return;
+    _socket.send({'audio': base64Encode(chunk)});
   }
 
   List<Attachment> _parseAttachments(dynamic raw) {
