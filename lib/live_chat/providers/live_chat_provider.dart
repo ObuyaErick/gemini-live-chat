@@ -171,6 +171,7 @@ class LiveChatProvider extends ChangeNotifier {
         ShowSnackBar(
           'Failed to load agents: $e',
           duration: const Duration(seconds: 6),
+          severity: SnackSeverity.error,
         ),
       );
     }
@@ -645,7 +646,11 @@ class LiveChatProvider extends ChangeNotifier {
     notifyListeners();
     if (errors.isNotEmpty) {
       _emit(
-        ShowSnackBar(errors.join('\n'), duration: const Duration(seconds: 6)),
+        ShowSnackBar(
+          errors.join('\n'),
+          duration: const Duration(seconds: 6),
+          severity: SnackSeverity.warning,
+        ),
       );
     }
   }
@@ -735,7 +740,11 @@ class LiveChatProvider extends ChangeNotifier {
           notifyListeners();
         }
         final label = toAgentName ?? toAgentId;
-        if (label != null) _emit(ShowSnackBar('Switched to $label'));
+        if (label != null) {
+          _emit(
+            ShowSnackBar('Switched to $label', severity: SnackSeverity.success),
+          );
+        }
 
       case 'navigate':
         final c = (payload['content'] as Map?)?.cast<String, dynamic>() ?? {};
@@ -824,7 +833,6 @@ class LiveChatProvider extends ChangeNotifier {
                 ? 'Context acknowledged'
                 : 'Context acknowledged: $label',
             duration: const Duration(seconds: 20),
-            dismissible: true,
           ),
         );
 
@@ -1121,7 +1129,7 @@ class LiveChatProvider extends ChangeNotifier {
       );
     } on MicrophoneUnavailableException catch (e) {
       if (gen != _connectionGeneration) return;
-      _emit(ShowSnackBar('$e', dismissible: true));
+      _emit(ShowSnackBar('$e', severity: SnackSeverity.warning));
       endLiveMode();
       return;
     }

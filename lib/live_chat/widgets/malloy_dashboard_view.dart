@@ -4,6 +4,8 @@ import 'package:intl/intl.dart';
 import 'package:webs/live_chat/models/malloy_dashboard.dart';
 import 'package:webs/live_chat/services/malloy_service.dart';
 import 'package:webs/live_chat/widgets/data_chart.dart';
+import 'package:webs/ui/core/alerts/app_notification.dart';
+import 'package:webs/ui/core/alerts/notification_host.dart';
 import 'package:webs/ui/core/app_theme.dart';
 
 /// Renders a `kind: "malloy"` attachment: fetches the `malloy.dashboard.v1`
@@ -636,12 +638,10 @@ class _SqlBody extends StatelessWidget {
                     ? null
                     : () {
                         Clipboard.setData(ClipboardData(text: source));
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text('Copied'),
-                            duration: Duration(seconds: 2),
-                            behavior: SnackBarBehavior.floating,
-                            width: 160,
+                        NotificationHost.maybeOf(context)?.pushAlert(
+                          AppNotification.success(
+                            'Copied',
+                            duration: const Duration(seconds: 2),
                           ),
                         );
                       },

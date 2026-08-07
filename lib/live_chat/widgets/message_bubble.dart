@@ -8,6 +8,8 @@ import 'package:webs/live_chat/widgets/attachments_view.dart';
 import 'package:webs/live_chat/widgets/avatar.dart';
 import 'package:webs/live_chat/widgets/chart_message_content.dart';
 import 'package:webs/live_chat/widgets/cursor_blink.dart';
+import 'package:webs/ui/core/alerts/app_notification.dart';
+import 'package:webs/ui/core/alerts/notification_host.dart';
 import 'package:webs/ui/core/app_theme.dart';
 import 'package:webs/ui/core/horizontal_layout_breakpoints.dart';
 
@@ -30,12 +32,10 @@ class MessageBubble extends StatelessWidget {
 
     void copyToClipboard() {
       Clipboard.setData(ClipboardData(text: message.content));
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Copied to clipboard'),
-          duration: Duration(seconds: 2),
-          behavior: SnackBarBehavior.floating,
-          width: 200,
+      NotificationHost.maybeOf(context)?.pushAlert(
+        AppNotification.success(
+          'Copied to clipboard',
+          duration: const Duration(seconds: 2),
         ),
       );
     }

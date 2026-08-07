@@ -3,6 +3,8 @@ import 'package:flutter/services.dart';
 import 'package:webs/live_chat/models.dart';
 import 'package:webs/live_chat/widgets/malloy_dashboard_view.dart';
 import 'package:webs/live_chat/widgets/plotly_chart.dart';
+import 'package:webs/ui/core/alerts/app_notification.dart';
+import 'package:webs/ui/core/alerts/notification_host.dart';
 import 'package:webs/ui/core/app_theme.dart';
 
 class AttachmentsView extends StatelessWidget {
@@ -86,12 +88,10 @@ class _DownloadLink extends StatelessWidget {
             ? null
             : () {
                 Clipboard.setData(ClipboardData(text: attachment.url));
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('Link copied to clipboard'),
-                    duration: Duration(seconds: 2),
-                    behavior: SnackBarBehavior.floating,
-                    width: 220,
+                NotificationHost.maybeOf(context)?.pushAlert(
+                  AppNotification.success(
+                    'Link copied to clipboard',
+                    duration: const Duration(seconds: 2),
                   ),
                 );
               },

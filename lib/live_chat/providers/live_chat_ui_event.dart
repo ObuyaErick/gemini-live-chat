@@ -5,16 +5,21 @@ sealed class LiveChatUiEvent {
   const LiveChatUiEvent();
 }
 
-/// Show a transient message (agent switch, navigate intent, context ack, upload
-/// errors). [dismissible] adds a manual dismiss action.
+/// How urgent/positive a [ShowSnackBar] is. Deliberately presentation-agnostic
+/// (no `Color`/`IconData`) so the provider layer doesn't reach into `ui/` —
+/// the screen maps this to whatever visual treatment it uses.
+enum SnackSeverity { info, success, warning, error }
+
+/// Show a transient message (agent switch, navigate intent, context ack,
+/// upload errors).
 class ShowSnackBar extends LiveChatUiEvent {
   final String message;
   final Duration duration;
-  final bool dismissible;
+  final SnackSeverity severity;
   const ShowSnackBar(
     this.message, {
     this.duration = const Duration(seconds: 3),
-    this.dismissible = false,
+    this.severity = SnackSeverity.info,
   });
 }
 

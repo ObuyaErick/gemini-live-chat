@@ -20,6 +20,9 @@ import 'package:webs/live_chat/widgets/sessions_sidebar.dart';
 import 'package:webs/live_chat/widgets/suggestion_card.dart';
 import 'package:webs/live_chat/widgets/tool_call_chip.dart';
 import 'package:webs/models/agent_models.dart';
+import 'package:webs/ui/core/alerts/app_notification.dart';
+import 'package:webs/ui/core/alerts/notification_host.dart';
+import 'package:webs/ui/core/alerts/notification_severity.dart';
 import 'package:webs/ui/core/app_theme.dart';
 import 'package:webs/ui/core/horizontal_layout_breakpoints.dart';
 
@@ -44,6 +47,11 @@ class _LiveChatState extends State<LiveChat> {
   final ScrollController _scrollController = ScrollController();
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
   bool _isSidebarOpen = true;
+
+  // Captured from a [Builder] inside the [NotificationHost] this widget
+  // mounts in [build] — `context` (this State's own context) sits *above*
+  // that host, so `NotificationHost.of(context)` wouldn't find it.
+  NotificationHostDelegate? _notificationHost;
 
   @override
   void initState() {
@@ -76,23 +84,25 @@ class _LiveChatState extends State<LiveChat> {
     if (!mounted) return;
     switch (event) {
       case ShowSnackBar():
-        final messenger = ScaffoldMessenger.of(context);
-        messenger.showSnackBar(
-          SnackBar(
-            content: Text(event.message),
+        _notificationHost?.pushAlert(
+          AppNotification(
+            message: event.message,
+            severity: _toNotificationSeverity(event.severity),
             duration: event.duration,
-            action: event.dismissible
-                ? SnackBarAction(
-                    label: 'Dismiss',
-                    onPressed: messenger.hideCurrentSnackBar,
-                  )
-                : null,
           ),
         );
       case ScrollToBottom():
         _scrollToBottom();
     }
   }
+
+  NotificationSeverity _toNotificationSeverity(SnackSeverity severity) =>
+      switch (severity) {
+        SnackSeverity.info => NotificationSeverity.info,
+        SnackSeverity.success => NotificationSeverity.success,
+        SnackSeverity.warning => NotificationSeverity.warning,
+        SnackSeverity.error => NotificationSeverity.error,
+      };
 
   void _scrollToBottom() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -252,6 +262,19 @@ class _LiveChatState extends State<LiveChat> {
 
   @override
   Widget build(BuildContext context) {
+    return Scaffold(
+      body: NotificationHost(
+        child: Builder(
+          builder: (hostContext) {
+            _notificationHost = NotificationHost.of(hostContext);
+            return _buildScaffold(hostContext);
+          },
+        ),
+      ),
+    );
+  }
+
+  Widget _buildScaffold(BuildContext context) {
     return ChangeNotifierProvider<LiveChatProvider>.value(
       value: _provider,
       child: HorizontalLayoutBreakpoints(
