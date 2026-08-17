@@ -12,6 +12,7 @@ import 'package:webs/live_chat/services/agent_service.dart';
 import 'package:webs/live_chat/services/chat_socket_service.dart';
 import 'package:webs/live_chat/services/mic_streamer.dart';
 import 'package:webs/live_chat/services/pcm_audio_player.dart';
+import 'package:webs/live_chat/services/read_aloud_service.dart';
 import 'package:webs/models/agent_models.dart';
 
 enum ChatMode {
@@ -31,15 +32,22 @@ class LiveChatProvider extends ChangeNotifier {
     PcmAudioPlayer? audioPlayer,
     MicStreamer? micStreamer,
     AgentService? agentService,
+    ReadAloudService? readAloudService,
   }) : _socket = socket ?? ChatSocketService(),
        _audioPlayer = audioPlayer ?? PcmAudioPlayer(),
        _micStreamer = micStreamer ?? MicStreamer(),
-       _agentService = agentService ?? AgentService();
+       _agentService = agentService ?? AgentService(),
+       _readAloud = readAloudService ?? ReadAloudService();
 
   final ChatSocketService _socket;
   final PcmAudioPlayer _audioPlayer;
   final MicStreamer _micStreamer;
   final AgentService _agentService;
+  final ReadAloudService _readAloud;
+
+  // The message currently being read aloud (by identity), for the button's
+  // active state. Null when idle.
+  ChatMessage? _readingAloud;
   final StreamController<LiveChatUiEvent> _uiEvents =
       StreamController<LiveChatUiEvent>.broadcast();
 
@@ -62,6 +70,11 @@ class LiveChatProvider extends ChangeNotifier {
   ChatMessage? _streamingMessage;
   PendingAction? _pendingAction;
   PendingClarification? _pendingClarification;
+
+  // A confirmed action the server reported as `running` (action_result). A
+  // real action routinely takes ten seconds; this is what the pending
+  // indicator renders between the user's click and the outcome.
+  ActionRun? _runningAction;
 
   // ---- Editable documents --------------------------------------------------
   final Map<String, TextDocument> _openDocuments = {};
@@ -128,6 +141,7 @@ class LiveChatProvider extends ChangeNotifier {
   List<ToolEvent> get activeToolEvents => List.unmodifiable(_activeToolEvents);
   PendingAction? get pendingAction => _pendingAction;
   PendingClarification? get pendingClarification => _pendingClarification;
+  ActionRun? get runningAction => _runningAction;
 
   Map<String, TextDocument> get openDocuments =>
       Map.unmodifiable(_openDocuments);
@@ -188,6 +202,7 @@ class LiveChatProvider extends ChangeNotifier {
     _socket.disconnect();
     _micStreamer.dispose();
     _audioPlayer.dispose();
+    _readAloud.dispose();
     _uiEvents.close();
     super.dispose();
   }
@@ -242,6 +257,7 @@ class LiveChatProvider extends ChangeNotifier {
     _closeTranscript();
     _pendingAction = null;
     _pendingClarification = null;
+    _runningAction = null;
     _activeToolEvents.clear();
     _openDocuments.clear();
     _activeDocumentFileId = null;
@@ -252,7 +268,11 @@ class LiveChatProvider extends ChangeNotifier {
 
   void _pushContextIfApplicable() {
     final ctx = _chatContext;
-    if (ctx == null || _selectedAgent?.isGlobal == true) return;
+    // Module context is a Concierge/global-agent concept (guide §5.2, §6.3):
+    // the server only accepts a `context` frame when `agent.is_global` is
+    // true, and errors ("Please provide a message.") otherwise — so this must
+    // gate on isGlobal being true, not false.
+    if (ctx == null || _selectedAgent?.isGlobal != true) return;
     _socket.send({'context': ctx.toJson()});
   }
 
@@ -295,6 +315,7 @@ class LiveChatProvider extends ChangeNotifier {
     _transcriptMessage = null;
     _pendingAction = null;
     _pendingClarification = null;
+    _runningAction = null;
     _isWaitingForResponse = false;
     _connectionError = null;
     _openDocuments.clear();
@@ -466,9 +487,15 @@ class LiveChatProvider extends ChangeNotifier {
   }
 
   void confirmAction() => _sendActionDecision(confirmed: true);
-  void cancelAction() => _sendActionDecision(confirmed: false);
 
-  void _sendActionDecision({required bool confirmed}) {
+  /// Decline the pending action. [reason], when given, is relayed verbatim as
+  /// model-facing prose — send it whenever the dismissal is not a refusal
+  /// (e.g. "The user chose to configure this elsewhere"), so the model does
+  /// not answer every closed dialog as though the user said no.
+  void cancelAction({String? reason}) =>
+      _sendActionDecision(confirmed: false, reason: reason);
+
+  void _sendActionDecision({required bool confirmed, String? reason}) {
     final pending = _pendingAction;
     if (pending == null || !_isConnected) return;
     _pendingAction = null;
@@ -476,6 +503,8 @@ class LiveChatProvider extends ChangeNotifier {
     _socket.send({
       'type': confirmed ? 'action_confirm' : 'action_cancel',
       'tool_name': pending.toolName,
+      if (!confirmed && reason != null && reason.trim().isNotEmpty)
+        'reason': reason.trim(),
     });
   }
 
@@ -493,6 +522,9 @@ class LiveChatProvider extends ChangeNotifier {
 
   void startLiveMode() {
     if (!_isConnected || isInLiveMode || _isWaitingForResponse) return;
+    // Live mode owns the audio output; a read-aloud in flight would talk over it.
+    _readingAloud = null;
+    _readAloud.stop();
     _socket.send({'type': 'start_live'});
   }
 
@@ -502,6 +534,58 @@ class LiveChatProvider extends ChangeNotifier {
     // recording indicator clears the moment the user asks it to.
     _stopMicStream();
     _socket.send({'end_live': true});
+  }
+
+  /// Closes the streamed audio turn so the model responds to what the user
+  /// just said.
+  ///
+  /// Server-side voice-activity detection is disabled (guide §9.2/§9.3;
+  /// backend pins `automatic_activity_detection.disabled = true`) — turn
+  /// boundaries in live mode are push-to-talk. The mic keeps streaming
+  /// continuously for the rest of the live session; this just marks "I'm
+  /// done talking for now" so the open audio turn gets answered. Call it at
+  /// whatever point the UI considers an utterance finished (e.g. a "done
+  /// talking" tap). Safe to call at any time in live mode — the server
+  /// ignores `end_turn` when no audio turn is open.
+  void endAudioTurn() {
+    if (!_isConnected || !isInLiveMode) return;
+    _socket.send({'end_turn': true});
+  }
+
+  // ---- Read aloud ------------------------------------------------------------
+
+  bool isReadingAloud(ChatMessage message) => _readingAloud == message;
+
+  /// Read [message]'s text aloud via the streaming TTS endpoint. Tapping the
+  /// same message again stops playback; tapping another message interrupts and
+  /// reads that one. Unavailable during live mode — the session is already
+  /// speaking, and two audio pipelines would talk over each other.
+  Future<void> toggleReadAloud(ChatMessage message) async {
+    if (isInLiveMode) return;
+    if (_readingAloud == message) {
+      _readingAloud = null;
+      notifyListeners();
+      await _readAloud.stop();
+      return;
+    }
+    _readingAloud = message;
+    notifyListeners();
+    try {
+      await _readAloud.speak(message.content);
+    } catch (e) {
+      _emit(
+        ShowSnackBar(
+          'Read aloud failed: $e',
+          duration: const Duration(seconds: 6),
+          severity: SnackSeverity.warning,
+        ),
+      );
+    } finally {
+      if (_readingAloud == message) {
+        _readingAloud = null;
+        notifyListeners();
+      }
+    }
   }
 
   // ---- Editable documents --------------------------------------------------
@@ -705,15 +789,71 @@ class LiveChatProvider extends ChangeNotifier {
         }
 
       case 'action_confirmation':
+        // A repeat frame for the same tool_name is a redelivery of the open
+        // gate (e.g. the user typed while parked) — replacing the single
+        // pending slot re-renders it rather than stacking a second dialog.
         final c = (payload['content'] as Map?)?.cast<String, dynamic>() ?? {};
         _pendingAction = PendingAction(
           toolName: (c['tool_name'] as String?) ?? 'action',
           summary: (c['summary'] as String?) ?? 'Confirm action?',
           parameters:
               (c['parameters'] as Map?)?.cast<String, dynamic>() ?? const {},
+          settings: [
+            for (final s in (c['settings'] as List?) ?? const [])
+              if (s is Map) ActionSetting.fromJson(s.cast<String, dynamic>()),
+          ],
         );
         notifyListeners();
         _emit(const ScrollToBottom());
+
+      case 'action_result':
+        final c = (payload['content'] as Map?)?.cast<String, dynamic>() ?? {};
+        final run = ActionRun.fromJson(c);
+        if (run.isRunning) {
+          // The server accepted the confirmation and started the call — the
+          // stretch to render a pending indicator over (often 10s+).
+          if (_pendingAction?.toolName == run.toolName) _pendingAction = null;
+          _runningAction = run;
+        } else {
+          _runningAction = null;
+          switch (run.status) {
+            case ActionRunStatus.ok:
+              final latency = run.latencyMs;
+              _emit(
+                ShowSnackBar(
+                  latency == null
+                      ? 'Action completed'
+                      : 'Action completed in ${(latency / 1000).toStringAsFixed(1)}s',
+                  severity: SnackSeverity.success,
+                ),
+              );
+            case ActionRunStatus.error:
+              // The action failed, not the turn — the model is given the
+              // failure and explains it next, so keep this lightweight.
+              _emit(
+                ShowSnackBar(
+                  run.error ?? 'Action failed',
+                  duration: const Duration(seconds: 6),
+                  severity: SnackSeverity.error,
+                ),
+              );
+            case ActionRunStatus.cancelled:
+            case ActionRunStatus.running:
+              break; // cancelled: the model acknowledges it in prose
+          }
+        }
+        notifyListeners();
+
+      case 'session_named':
+        final c = (payload['content'] as Map?)?.cast<String, dynamic>() ?? {};
+        final sessionId = c['session_id'] as String?;
+        final title = c['title'] as String?;
+        if (sessionId == null || title == null || title.trim().isEmpty) return;
+        final session = _sessions[sessionId];
+        if (session != null) {
+          _sessions[sessionId] = session.copyWith(title: title);
+          notifyListeners();
+        }
 
       case 'clarification':
         final c = (payload['content'] as Map?)?.cast<String, dynamic>() ?? {};
@@ -801,6 +941,7 @@ class LiveChatProvider extends ChangeNotifier {
           }
         }
         _activeToolEvents.clear();
+        _runningAction = null;
         _isWaitingForResponse = false;
         notifyListeners();
         for (final att in attachments.where((a) => a.isEditable)) {
@@ -915,15 +1056,14 @@ class LiveChatProvider extends ChangeNotifier {
         _handleDocumentResync(payload);
 
       case 'error':
+        // An `error` explains a failure; it NEVER ends the turn. `final` (or
+        // `turn_complete` in live mode) always follows and is the only place
+        // the composer is released. It can also arrive mid-turn — a message
+        // refused because a gate is open comes as a redelivered gate frame
+        // followed by this error — so clearing the pending gate or unlocking
+        // input here would break a turn that is still running. Deltas already
+        // streamed stand as the answer; leave them be.
         final errMsg = payload['content'] as String? ?? 'Unknown error';
-        _streamingMessage?.status = MessageStatus.error;
-        _streamingMessage = null;
-        _closeTranscript();
-        _stopMicStream();
-        _activeToolEvents.clear();
-        _pendingAction = null;
-        _pendingClarification = null;
-        _isWaitingForResponse = false;
         _messages.add(
           ChatMessage(
             role: MessageRole.assistant,
@@ -985,9 +1125,15 @@ class LiveChatProvider extends ChangeNotifier {
   void _handleHistory(Map<String, dynamic> payload) {
     final content =
         (payload['content'] as Map?)?.cast<String, dynamic>() ?? const {};
+    // `history.content.agent_id` names the agent this connection was opened
+    // with (guide §5.1/§6.2) — it is not guaranteed to equal our locally
+    // selected agent (e.g. the roster fetch hasn't resolved yet on a cold
+    // start). The frame is always valid for this connection regardless, so
+    // adopt it as the active agent rather than discarding a legitimate
+    // history replay.
     final historyAgentId = content['agent_id'] as String?;
     if (historyAgentId != null && historyAgentId != activeAgentId) {
-      return;
+      _selectedAgent = _agentById(historyAgentId) ?? _selectedAgent;
     }
     final entries = (content['data'] as List?) ?? const [];
 
@@ -1017,6 +1163,7 @@ class LiveChatProvider extends ChangeNotifier {
     _activeToolEvents.clear();
     _pendingAction = null;
     _pendingClarification = null;
+    _runningAction = null;
     _isWaitingForResponse = false;
 
     // Reflect who last answered so the affordance + sticky agent_id are correct.
@@ -1094,6 +1241,9 @@ class LiveChatProvider extends ChangeNotifier {
     _closeTranscript();
     _stopMicStream();
     _activeToolEvents.clear();
+    _pendingAction = null;
+    _pendingClarification = null;
+    _runningAction = null;
     notifyListeners();
   }
 
@@ -1106,6 +1256,9 @@ class LiveChatProvider extends ChangeNotifier {
     _closeTranscript();
     _stopMicStream();
     _activeToolEvents.clear();
+    _pendingAction = null;
+    _pendingClarification = null;
+    _runningAction = null;
     notifyListeners();
   }
 

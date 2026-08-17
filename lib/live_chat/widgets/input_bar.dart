@@ -14,6 +14,12 @@ class InputBar extends StatelessWidget {
   final bool isInLiveMode;
   final VoidCallback? onToggleLiveMode;
 
+  /// Closes the current streamed audio turn ("done talking") without leaving
+  /// live mode — server-side VAD is disabled, so this is what actually gets
+  /// the model to respond to a spoken utterance. Only meaningful (and shown)
+  /// while [isInLiveMode] is true.
+  final VoidCallback? onEndAudioTurn;
+
   const InputBar({
     super.key,
     required this.controller,
@@ -26,6 +32,7 @@ class InputBar extends StatelessWidget {
     required this.onRemoveStagedFile,
     this.isInLiveMode = false,
     this.onToggleLiveMode,
+    this.onEndAudioTurn,
   });
 
   String _formatSize(int bytes) {
@@ -116,6 +123,15 @@ class InputBar extends StatelessWidget {
                           ),
                         ),
                       ),
+                      if (isInLiveMode) ...[
+                        _CircleIcon(
+                          icon: Icons.check_rounded,
+                          onTap: onEndAudioTurn,
+                          tooltip: 'Done talking (send)',
+                          color: t.accent,
+                        ),
+                        const SizedBox(width: 4),
+                      ],
                       _CircleIcon(
                         icon: isInLiveMode
                             ? Icons.stop_rounded
@@ -124,7 +140,7 @@ class InputBar extends StatelessWidget {
                             ? onToggleLiveMode
                             : null,
                         tooltip: isInLiveMode
-                            ? 'End voice mode'
+                            ? 'Exit voice mode'
                             : 'Enter voice mode',
                         color: isInLiveMode ? t.danger : null,
                       ),

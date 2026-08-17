@@ -76,6 +76,63 @@ class ActionConfirmationCard extends StatelessWidget {
                             color: t.text1,
                           ),
                         ),
+                        // What the action will actually do: server-resolved
+                        // settings the model never supplies (destination,
+                        // folder, theme, …). Render label/display in the
+                        // authored order; `value` is an identifier, never
+                        // shown. Nothing renders when the tool declares none.
+                        if (action.settings.isNotEmpty) ...[
+                          const SizedBox(height: 12),
+                          Container(
+                            width: double.infinity,
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 10,
+                            ),
+                            decoration: BoxDecoration(
+                              color: t.warningSoft.withValues(alpha: 0.35),
+                              borderRadius: BorderRadius.circular(9),
+                              border: Border.all(color: t.warningSoft),
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                for (final s in action.settings)
+                                  Padding(
+                                    padding: const EdgeInsets.symmetric(
+                                      vertical: 2,
+                                    ),
+                                    child: Row(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        SizedBox(
+                                          width: 110,
+                                          child: Text(
+                                            s.label,
+                                            style: TextStyle(
+                                              fontSize: 12,
+                                              color: t.text3,
+                                            ),
+                                          ),
+                                        ),
+                                        Expanded(
+                                          child: Text(
+                                            s.display,
+                                            style: TextStyle(
+                                              fontSize: 12.5,
+                                              fontWeight: FontWeight.w600,
+                                              color: t.text1,
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                              ],
+                            ),
+                          ),
+                        ],
                         if (action.parameters.isNotEmpty) ...[
                           const SizedBox(height: 12),
                           Container(

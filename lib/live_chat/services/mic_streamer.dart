@@ -17,8 +17,12 @@ class MicrophoneUnavailableException implements Exception {
 /// Captures the microphone as raw PCM for live (voice) mode.
 ///
 /// Emits mono s16le chunks at [sampleRate] to the `onChunk` callback of
-/// [start]. Chunks are sent continuously as they arrive; voice-activity
-/// detection is server-side, so the client never marks turn boundaries.
+/// [start]. Chunks are sent continuously as they arrive. Server-side
+/// voice-activity detection is disabled (push-to-talk only), so the client
+/// itself must mark turn boundaries by sending `{"end_turn": true}` — see
+/// `LiveChatProvider.endAudioTurn()` — once the user signals they're done
+/// speaking. This class only streams audio; it has no opinion on when a turn
+/// ends.
 ///
 /// [start] is a no-op while running, [stop] releases the device, and
 /// [dispose] tears the recorder down for good. The owner must call [dispose].

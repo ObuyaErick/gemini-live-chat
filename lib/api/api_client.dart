@@ -1,23 +1,17 @@
 class ApiClient {
-  // static String host = 'localhost:8080';
-  // static String baseUrl = 'http://$host';
-  // static String baseWebsocketUrl = 'ws://$host';
+  static String host = 'localhost:8080';
+  static String baseUrl = 'http://$host';
+  static String baseWebsocketUrl = 'ws://$host';
 
-  static String host = 'bi-with-ai-chat-230186747996.europe-west1.run.app';
-  static String baseUrl = 'https://$host';
-  static String baseWebsocketUrl = 'wss://$host';
+  // static String host = 'bi-with-ai-chat-230186747996.europe-west1.run.app';
+  // static String baseUrl = 'https://$host';
+  // static String baseWebsocketUrl = 'wss://$host';
 
   // Auth
   static String? token =
-      'eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJmZWlzYWxAcmVkdXplci50ZWNoIiwic2NvcGUiOiJhZG1pbiIsInByb2plY3QiOiJ3aW4tcC1tb2JpbGV1bml2ZXJzZSIsImFjY291bnQiOiJtb2JpbGVfdW5pdmVyc2VfYXBpIiwiZHJpdmVJZCI6IjBBUEpyWnNSRW1sTzlVazlQVkEiLCJpc3MiOiJvcmdhbml6YXRpb25AYm94YWxpbm8uY29tIiwianRpIjoiZTUzZDU3MjAzYWMxZTI1NzM0YzQ2YmIwNDMzNzEzNDBiMmM5MGU4ZCIsImV4cCI6MTc4NDIyMjg2NCwiY3JlYXRlZCI6IjIwMjYtMDctMTYgMDg6MDY6MzIifQ.nDZnvZnOQlfeRgRNu8luE9aOFGXCoIRuuX840_z-hDQ';
-  // Sandbox
-  //   'eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJtZWxremVkZWtAcmVkdXplci50ZWNoIiwic2NvcGUiOiJhZG1pbiIsInByb2plY3QiOiJ3aW4tcC1tb2JpbGV1bml2ZXJzZSIsImFjY291bnQiOiJtb2JpbGVfdW5pdmVyc2VfYXBpIiwiZHJpdmVJZCI6IjBBUEpyWnNSRW1sTzlVazlQVkEiLCJpc3MiOiJvcmdhbml6YXRpb25AYm94YWxpbm8uY29tIiwianRpIjoiZDA3YTdiYWYxNTIyYTUzYzVlODBmNzAwNTcxNmE0ZmRmMmMwMjFmOCIsImV4cCI6MTc4NDA1Mjk3OCwiY3JlYXRlZCI6IjIwMjYtMDctMTQgMDg6MTY6MjEifQ.BBmd7zYY5veY6sbYUEY0CdFzEoYqFAWaRLiMI-qMCfo';
-  // Boxalino AG
-  // 'eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJlcmlja0ByZWR1emVyLnRlY2giLCJzY29wZSI6ImFkbWluIiwicHJvamVjdCI6Indpbi1wLWJveGFsaW5vYWciLCJhY2NvdW50IjoiYm94YWxpbm9fYWciLCJkcml2ZUlkIjoiMEFCWlM2N2dESWtUV1VrOVBWQSIsImlzcyI6Im9yZ2FuaXphdGlvbkBib3hhbGluby5jb20iLCJqdGkiOiIyZTM0ODNjOWVkNTM1Yzg3ODY4NTlhZGZjN2UwZWJmMWVjNTEwYzA1IiwiZXhwIjoxNzgzOTc4MDQ2LCJjcmVhdGVkIjoiMjAyNi0wNy0xMyAxMToyNzozMCJ9.2s8v0o4778XDBnmDDDGvMca9Cv0Blu1gM3X_R7B5Etc';
-  // Mobile Universe
-  // 'eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJlcmlja0ByZWR1emVyLnRlY2giLCJzY29wZSI6ImFkbWluIiwicHJvamVjdCI6Indpbi1wLW1vYmlsZXVuaXZlcnNlIiwiYWNjb3VudCI6Im1vYmlsZV91bml2ZXJzZV9hcGkiLCJkcml2ZUlkIjoiMEFQSnJac1JFbWxPOVVrOVBWQSIsImlzcyI6Im9yZ2FuaXphdGlvbkBib3hhbGluby5jb20iLCJqdGkiOiIyZTM0ODNjOWVkNTM1Yzg3ODY4NTlhZGZjN2UwZWJmMWVjNTEwYzA1IiwiZXhwIjoxNzgzOTc4MDQ2LCJjcmVhdGVkIjoiMjAyNi0wNy0xMyAxNDowOTo0NiJ9.m0CePVfF3heK9-9lJs52Ndl2mybrG3B5OzXxiVTOrmQ';
+      '';
 
   static String? goAuthToken =
       //
-      'eyJhbGciOiJSUzI1NiIsImtpZCI6ImJjOGY3YWY1OGRiNDRjZjZlYWEyZWQxMGVjODBmMzQwOGNmZGU0NjUiLCJ0eXAiOiJKV1QifQ.eyJpc3MiOiJodHRwczovL2FjY291bnRzLmdvb2dsZS5jb20iLCJhenAiOiIzNzQzNjg4ODE5OTQtNjMyMTkxdnY2YTMwcDc1YmRlaTdhdDY0ZTJodnA5OWkuYXBwcy5nb29nbGV1c2VyY29udGVudC5jb20iLCJhdWQiOiIzNzQzNjg4ODE5OTQtNjMyMTkxdnY2YTMwcDc1YmRlaTdhdDY0ZTJodnA5OWkuYXBwcy5nb29nbGV1c2VyY29udGVudC5jb20iLCJzdWIiOiIxMTM4MTc5NTA1MzcwMTA5MjM4MzgiLCJoZCI6InJlZHV6ZXIudGVjaCIsImVtYWlsIjoiZXJpY2tAcmVkdXplci50ZWNoIiwiZW1haWxfdmVyaWZpZWQiOnRydWUsIm5vbmNlIjoibm90X3Byb3ZpZGVkIiwibmJmIjoxNzg0MDA3MzA4LCJuYW1lIjoiRXJpY2sgT2J1eWEiLCJwaWN0dXJlIjoiaHR0cHM6Ly9saDMuZ29vZ2xldXNlcmNvbnRlbnQuY29tL2EvQUNnOG9jTHA4bm5HaVQzaWV6MVFmYlBrWHRtcjlFWGxwekFqSFJQdUNoTWtJNnNlRFItZ3ZqTT1zOTYtYyIsImdpdmVuX25hbWUiOiJFcmljayIsImZhbWlseV9uYW1lIjoiT2J1eWEiLCJpYXQiOjE3ODQwMDc2MDgsImV4cCI6MTc4NDAxMTIwOCwianRpIjoiMWFmMTcxNDc4NzBhZmM4MGEyMTUyYmM5NjMxNGY0YmI2OTkyMTE0OCJ9.Y0PqEN1H-ffHbSmb2JBjvHY1YNZ5jk_MkE82xnX4BYpVSrvbOp-XKvUJUmbHvPOG_C4TKkI3_FagKiU0uqQRe1HGS8VIZSVUpTF3PSmezf-Nl9AtsFHRbChSYWn2ODfsnoI50cz5ZFx_iUC6jKGm80-hHlF197gaT_9HbYqlPTdqC0Ooul8eJh28CUW9JINe-YBjFXQZT5BW9FH2iCXPa3MKtc2B6X4sG8t446uqwS725V-DrYZZSqL_Z93ACmceZzeTxNktl8J7FRdN7iePFi5RlcE2ycvRm6ShHj3bqubqwZd_vmS64eCG1xmuCxG7eLwiYO4LzFYptCeMrtDYlA';
+      '';
 }

@@ -7,6 +7,7 @@ import 'package:webs/live_chat/models.dart';
 import 'package:webs/live_chat/providers/live_chat_provider.dart';
 import 'package:webs/live_chat/providers/live_chat_ui_event.dart';
 import 'package:webs/live_chat/widgets/action_confirmation_card.dart';
+import 'package:webs/live_chat/widgets/action_running_indicator.dart';
 import 'package:webs/live_chat/widgets/centered_band.dart';
 import 'package:webs/live_chat/widgets/clarification_card.dart';
 import 'package:webs/live_chat/widgets/date_pill.dart';
@@ -232,6 +233,10 @@ class _LiveChatState extends State<LiveChat> {
               onCancel: _provider.cancelAction,
             ),
           ),
+        if (_provider.runningAction != null)
+          CenteredBand(
+            child: ActionRunningIndicator(run: _provider.runningAction!),
+          ),
         if (_provider.pendingClarification != null)
           CenteredBand(
             child: ClarificationCard(
@@ -254,6 +259,9 @@ class _LiveChatState extends State<LiveChat> {
               ? (_provider.isInLiveMode
                     ? _provider.endLiveMode
                     : _provider.startLiveMode)
+              : null,
+          onEndAudioTurn: _provider.isInLiveMode
+              ? _provider.endAudioTurn
               : null,
         ),
       ],

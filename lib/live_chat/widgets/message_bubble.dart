@@ -366,6 +366,20 @@ class MessageBubble extends StatelessWidget {
                               icon: Icons.copy_rounded,
                               onTap: copyToClipboard,
                             ),
+                            // Read the reply aloud (streaming TTS). Hidden in
+                            // live mode — the session is already speaking.
+                            if (!provider.isInLiveMode) ...[
+                              const SizedBox(width: 6),
+                              _GhostButton(
+                                label: provider.isReadingAloud(message)
+                                    ? 'Stop'
+                                    : 'Read aloud',
+                                icon: provider.isReadingAloud(message)
+                                    ? Icons.stop_rounded
+                                    : Icons.volume_up_rounded,
+                                onTap: () => provider.toggleReadAloud(message),
+                              ),
+                            ],
                           ],
                         ),
                       ),

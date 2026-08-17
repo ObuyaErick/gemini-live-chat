@@ -132,7 +132,7 @@ Invalidates every cached agent config so the next request re-fetches from BigQue
 
 ### `GET /sessions`
 
-Lists all active sessions belonging to the authenticated user, newest first, with the first user message per session as a preview. Use this to render a session history picker. Sessions are **shared transcripts**, not tied to one agent, so this is not agent-scoped — each row carries the session's initial `agent_id` plus `participant_agents` (every agent that produced a turn in the thread).
+Lists all active sessions belonging to the authenticated user, newest first, each with its `title` and the first user message. Use this to render a session history picker. Sessions are **shared transcripts**, not tied to one agent, so this is not agent-scoped — each row carries the session's initial `agent_id` plus `participant_agents` (every agent that produced a turn in the thread).
 
 Request:
 
@@ -151,6 +151,7 @@ Response: `200 OK` — array of session objects, newest first.
     "email": "user@acme.com",
     "agent_id": "concierge",
     "model_id": "gemini-2.5-flash",
+    "title": "Q3 revenue by category",
     "status": "active",
     "created_at": "2026-05-04T10:00:00+00:00",
     "participant_agents": ["concierge", "bob_the_kpi_guy"],
@@ -167,7 +168,11 @@ Response: `200 OK` — array of session objects, newest first.
 ]
 ```
 
-`agent_id` is the session's initial agent; `participant_agents` lists every agent that took a turn (label/colour the thread accordingly). `messages` contains the single earliest user message for each session, suitable for a preview card. If the session has no user message yet, `messages` is `null`.
+`agent_id` is the session's initial agent; `participant_agents` lists every agent that took a turn (label/colour the thread accordingly).
+
+**`title` is the label to render.** The server writes it with the model once the session's first turn completes — it describes the conversation rather than echoing its opening line, and it never changes afterwards, so it is safe to cache. It is `null` only for a session whose first turn hasn't finished (or whose naming failed); fall back to `messages` in that case, and expect the `session_named` event ([§4](#4-outbound-events-server--client)) or the next `GET /sessions` to fill it in.
+
+`messages` contains the single earliest user message for each session — a fallback preview, not the label. If the session has no user message yet, `messages` is `null`.
 
 ### Per-session detail
 
@@ -319,7 +324,7 @@ All frames are JSON. Every outbound frame has `type` and `content`. Every inboun
 
 | `type`                | When                                                     | `content` shape / siblings                                                                        |
 | --------------------- | -------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
-| `session`             | Exactly once, right after `accept()`                     | `{ "session_id": "<uuid>", "account": "…", "email": "…", "agent_id": "<id>", "model_id": "…", "status": "active", "created_at": "<iso>", "modified_at": "<iso>" }` |
+| `session`             | Exactly once, right after `accept()`                     | `{ "session_id": "<uuid>", "account": "…", "email": "…", "agent_id": "<id>", "model_id": "…", "title": "<name>"\|null, "status": "active", "created_at": "<iso>", "modified_at": "<iso>" }` |
 | `history`             | Sent once on connect if a prior session exists           | `{ "agent_id": "<id>", "data": [ chat: {"role": "user"\|"model", "text", "agent_id", "attachments"?}, edits: {"role": "edit", "origin", "file_id", "from_version", "to_version", "diff"} ] }` — chat bubbles carry the producing `agent_id` (shared session) |
 | `context_ack`         | After the server accepts a `context` message             | The stored context, or `null`                                                                     |
 | `delta`               | Incremental streamed text from the model                 | `"<chunk>"` (plain string)                                                                        |
@@ -328,14 +333,16 @@ All frames are JSON. Every outbound frame has `type` and `content`. Every inboun
 | `code_execution_result` | Output of the model's native code execution            | `{ "output": "<stdout/text>", "outcome": "<status>" }`                                            |
 | `tool_call`           | Model invoked a function                                 | `{ "name": "<fn>", "args": { … } }`                                                               |
 | `tool_result`         | A function returned (summarised)                         | `{ "name": "<fn>", "result": { … } }`                                                             |
-| `action_confirmation` | Action requires user confirmation (Tier 3)               | `{ "tool_name": "…", "summary": "…", "parameters": { … } }`                                       |
+| `action_confirmation` | Action requires user confirmation (Tier 3)               | `{ "tool_name": "…", "summary": "…", "parameters": { … }, "settings": [{ "key", "label", "value", "display" }] }` — `settings` is the render surface: what the action will actually do ([§6.4](#64-confirmation-gate-tier-3-actions)) |
+| `action_result`       | The outcome of a confirmed or declined action — the response half of `action_confirmation` ([§6.4.2](#642-actions-that-require-confirmation)) | `{ "tool_name": "…", "status": "running" \| "ok" \| "error" \| "cancelled", "result"?: { … }, "error"?: "…", "reason"?: "…", "latency_ms"?: <int> }` |
 | `clarification`       | Model asked the user one or more questions (`ASK_USER`) — turn pauses for the reply | `{ "tool_name": "…", "questions": [{ "question": "…", "options": [{ "label": "…", "description"?: "…" }], "multi_select": <bool> }] }` |
 | `agent_switched`      | The active agent changed for this turn (user handed the session to another agent) | `{ "from_agent_id": "…", "to_agent_id": "…", "agent_name": "…" }` |
+| `session_named`       | Once per session, shortly after its first turn completes — the model has named the conversation | `{ "session_id": "<uuid>", "title": "…" }` |
 | `navigate`            | `navigate` action method fired                           | `{ "target": "/admin/…", "params": { … } }`                                                       |
 | `text_diff`           | An AI edit from `DOCUMENT_EDIT`. It carries a `to_version`, so it is a **committed** change — apply it, don't echo it back ([§5.4](#text-document-retrieve-and-edit-lifecycle)) | `{ "file_id": "…", "from_version": <int>, "to_version": <int>, "origin": "agent", "diff": "<git diff>", "old_value": "<full body before>", "new_value": "<full body after>" }` |
 | `document_resync`     | Hard-reset a document — after a failed patch, or when an already-open document is retrieved again | `{ "file_id": "…", "version": <int>, "filename": "…", "mime_type": "…", "text": "<full body>" }`   |
-| `final`               | Turn complete; full assembled model text                 | `content: "<full-text>"` **+ sibling** `attachments: [attachment record, …]`                      |
-| `error`               | Anything went wrong                                      | `"<human-readable message>"`                                                                      |
+| `final`               | **Turn complete** — the one and only turn terminator; full assembled model text | `content: "<full-text>"` **+ sibling** `attachments: [attachment record, …]`                      |
+| `error`               | Something went wrong. Explains a failure; **does not end the turn** | `"<human-readable message>"`                                                                      |
 | `mode_changed`        | Server confirms a live↔standard mode switch             | `{ "mode": "live" \| "standard" }`                                                                |
 | `audio_output`        | _(live mode)_ Model speech chunk                         | `content: "<base64-encoded bytes>"`, **+ sibling** `mime_type: "<e.g. audio/pcm;rate=16000>"`     |
 | `output_transcript`   | _(live mode)_ Model text alongside the audio response    | `content: "<text>"`, **+ sibling** `is_delta: <bool>` — `true` = streaming chunk, `false` = final assembled text for the turn |
@@ -344,6 +351,15 @@ All frames are JSON. Every outbound frame has `type` and `content`. Every inboun
 | `turn_complete`       | _(live mode)_ Model has finished speaking for this turn  | _(no content field)_                                                                              |
 
 `session.created_at` / `modified_at` are the timestamps of **this connect**, not the stored session record — a resumed session reports "now" for both. Use `GET /sessions` when you need the session's real creation time.
+
+`session.title` is the stored display name: populated when resuming an already-named session, `null` on a fresh connect. In the `null` case the server names the conversation once its first turn completes and pushes `session_named` on this same socket — label the thread provisionally (or not at all) and replace it when that frame arrives:
+
+```json
+server → { "type": "session_named",
+           "content": { "session_id": "f3a1c2d4-…", "title": "Q3 revenue by category" } }
+```
+
+The frame is a convenience, not a guarantee: it is only delivered if the socket is still open when naming finishes, and a client that closes first (or is on another device) reads the same title from `GET /sessions`. The title is written once and never revised, so no later frame supersedes it. Voice turns count — a session opened straight into live mode is named from its first spoken exchange.
 
 The `final` frame has two top-level siblings:
 
@@ -369,6 +385,25 @@ The `final` frame has two top-level siblings:
 
 `attachments` is always present on `final` (empty array when no charts were produced in the turn). When `attachments` is non-empty, `content` contains ` ```chart\n<file_id>\n``` ` slot markers indicating where each chart should be rendered within the prose (see [Section 8](#8-attachments-and-chart-rendering)).
 
+#### Turn lifecycle — `final` closes every turn
+
+**Gate your "response in progress" state on `final` and nothing else.** Exactly one `final` is emitted for every turn the server accepts:
+
+| Outcome                                             | Frames                                        |
+| --------------------------------------------------- | --------------------------------------------- |
+| Normal answer                                       | `delta` … → `final` with the assembled text   |
+| Turn failed mid-flight (tool blew up, provider error) | `error` with the message → `final` with `content: ""` |
+| Turn never started (attachment rejected)            | `error` → `final` with `content: ""`          |
+
+A `final` whose `content` is `""` is a **bare terminator**, not a correction: the deltas already streamed stand as the answer, so render nothing new and do not blank the bubble.
+
+Two consequences worth stating outright, because getting either wrong is what strands the composer:
+
+- **`error` never ends a turn.** It explains one. It can also arrive *mid*-turn — a message refused because a confirmation is open (below) — so a client that re-enables input on `error` unlocks it under a turn that is still running.
+- **A turn parked on a gate is still running.** While an `action_confirmation` or `clarification` is open the server sends nothing else and accepts no new prompt; the turn resumes only once the gate is answered.
+
+If the user sends a chat message anyway while a gate is open, the server re-sends the open gate frame followed by an `error` explaining why the message was refused. A client that lost the dialog (a reload, a re-render) should treat that repeat frame as authoritative and render it again — the identical frame for the same `tool_name` is a redelivery, not a second request.
+
 ### 5.2. Inbound — client → server
 
 | Shape                                                                         | Effect                                               |
@@ -379,7 +414,7 @@ The `final` frame has two top-level siblings:
 | `{ "text": "…", "agent_id": "…" }`                                           | User prompt directed at a chosen agent — hands this (and subsequent) turns to that agent in the shared session (see [§6.7](#67-picking-the-agent-shared-sessions)) |
 | `{ "context": { "module": "…", "page": "…", "…": "…" } }`                    | Update Concierge module context (no-op on Data Crew) |
 | `{ "type": "action_confirm", "tool_name": "…" }`                              | Approve the pending Tier-3 action                    |
-| `{ "type": "action_cancel", "tool_name": "…" }`                               | Decline the pending Tier-3 action                    |
+| `{ "type": "action_cancel", "tool_name": "…", "reason"?: "…" }`               | Decline the pending Tier-3 action. `reason` is your own words for why the dialog closed and is handed to the model verbatim — send it whenever the dismissal is not a refusal (see [§6.4.2](#642-actions-that-require-confirmation)) |
 | `{ "type": "elicit_response", "tool_name": "…", "answers": [["<label>", …], …] }`  | Answer a pending `clarification`; `answers[i]` is the chosen label(s) for question _i_ (empty inner array = that question dismissed) |
 | `{ "type": "document_edit", "content": { "file_id": "…", "diff": "…", "origin"?: "user"\|"agent" } }` | Commit a **manual** change as a git diff (`origin: "user"`, the default); server owns the version. Do not use it to echo an agent `text_diff` back — those are already committed ([§5.4](#text-document-retrieve-and-edit-lifecycle)) |
 | `{ "type": "start_live" }`                                                    | Enter live (voice) mode on this connection           |
@@ -560,7 +595,7 @@ There are **many** persistence tools, differing only in destination and in creat
 | `KNOWLEDGE_MARKDOWN_SAVE` / `…_SAVE_PY` | Persist a **new** document (creates a node) |
 | `KNOWLEDGE_MARKDOWN_UPDATE` / `…_UPDATE_PY` | Persist edits to an **existing** node, in place |
 | `KNOWLEDGE_MARKDOWN_SAVE_BIGQUERY` | Persist straight to the BigQuery content store |
-| `KNOWLEDGE_COMPOSER_OPEN` | Hand the document off to the Knowledge Composer UI (a `navigate` action) |
+| `KNOWLEDGE_COMPOSER_OPEN` | Hand the document off to the Knowledge Composer UI (a `navigate` action). The client receives `navigate.params.node_ids` as a plain string array of real KB node ids — the model's document selection is resolved server-side and never reaches the wire as `file_id`s |
 | `KNOWLEDGE_PUBLISH` | Export the previewed document (PDF, Google Docs, Confluence) |
 | `KNOWLEDGE_PUBLISH_BUNDLE` / `…_BUNDLE_QUICK` | Compose several KB nodes into one published Google Doc — the `_QUICK` variant skips the group/folder questions and uses the default destination |
 | `KNOWLEDGE_COMPOSER_OPTIONS` | Fetch selectable groups / folders / themes, usually paired with `ASK_USER` |
@@ -880,26 +915,84 @@ server → { "type": "action_confirmation",
 
 client → { "type": "action_confirm", "tool_name": "update_recommendation_weight" }
 
-server → { "type": "tool_result", "content": { "name": "update_recommendation_weight", "result": { "affected_rows": 1 } } }
-server → { "type": "delta",       "content": "Done — cross-sell weight for shoes is now 0.5." }
-server → { "type": "final",       "content": "Done — cross-sell weight for shoes is now 0.5.", "attachments": [] }
+server → { "type": "action_result", "content": { "tool_name": "update_recommendation_weight", "status": "running", "summary": "Set the cross-sell weight for shoes to 0.5." } }
+
+    … the action is executing; this is the stretch to render a spinner over …
+
+server → { "type": "action_result", "content": { "tool_name": "update_recommendation_weight", "status": "ok", "result": { "affected_rows": 1 }, "latency_ms": 8420 } }
+server → { "type": "tool_result",  "content": { "name": "update_recommendation_weight", "result": { "affected_rows": 1 } } }
+server → { "type": "delta",        "content": "Done — cross-sell weight for shoes is now 0.5." }
+server → { "type": "final",        "content": "Done — cross-sell weight for shoes is now 0.5.", "attachments": [] }
 ```
+
+**`action_confirmation` is a request; `action_result` is its response** — the same pairing `tool_call` / `tool_result` has, keyed by `tool_name`. Confirming an action produces at least two of them:
+
+| `status`    | Meaning                                                                    |
+| ----------- | -------------------------------------------------------------------------- |
+| `running`   | The server accepted your confirmation and has started the call. Show progress from here. |
+| `ok`        | The action succeeded. `result` is the summarised outcome, `latency_ms` how long it took. |
+| `error`     | The action failed. `error` is the message; the turn continues (the model gets the failure and explains it). |
+| `cancelled` | The action was declined and never ran. `reason` echoes what you sent.       |
+
+The `running` ack exists because a real action — a publish, a bulk write — routinely takes ten seconds or more, and without it there is no frame at all between the user's click and the outcome. Dismiss the confirmation dialog on `running` and put a pending indicator in its place; replace that with the outcome on the terminal frame. Note that an action failing is not a turn failing: `status: "error"` is followed by the model's own account of it, and then by `final` as usual.
 
 On **cancel**, the client sends the same shape with `action_cancel`:
 
 ```
 client → { "type": "action_cancel",  "tool_name": "update_recommendation_weight" }
 
-server → { "type": "tool_result", "content": { "name": "update_recommendation_weight", "result": { "cancelled": true, "reason": "User declined the action." } } }
-server → { "type": "delta",       "content": "No problem — I didn't change anything." }
-server → { "type": "final",       "content": "No problem — I didn't change anything.", "attachments": [] }
+server → { "type": "action_result", "content": { "tool_name": "update_recommendation_weight", "status": "cancelled", "reason": "User declined the action." } }
+server → { "type": "tool_result",   "content": { "name": "update_recommendation_weight", "result": { "cancelled": true, "reason": "User declined the action." } } }
+server → { "type": "delta",         "content": "No problem — I didn't change anything." }
+server → { "type": "final",         "content": "No problem — I didn't change anything.", "attachments": [] }
 ```
+
+#### Say *why* you cancelled
+
+`action_cancel` accepts an optional `reason`, and it becomes the tool result the model reads. Not every closed dialog is a refusal: a client that sends the user to a fuller configuration screen has *deferred* the action, not declined it, and the default reason ("User declined the action.") makes the model answer as though the user said no.
+
+```
+client → { "type": "action_cancel",
+           "tool_name": "KNOWLEDGE_PUBLISH_BUNDLE_QUICK",
+           "reason": "The user chose to configure this publish in the Knowledge Composer instead." }
+
+server → { "type": "action_result", "content": { "tool_name": "KNOWLEDGE_PUBLISH_BUNDLE_QUICK", "status": "cancelled", "reason": "The user chose to configure this publish in the Knowledge Composer instead." } }
+server → { "type": "final",         "content": "Sure — I'll leave this here. Publish it from the composer once you've set the options.", "attachments": [] }
+```
+
+Write the reason as a statement about what the user did, in prose. It is model-facing text, not an enum.
+
+#### Replies with no gate open are dropped
+
+The server only reads a confirm/cancel while it is actually parked on that gate, and only accepts one naming the tool it is waiting for. A reply that arrives with no gate open — a double click, a retry after the turn moved on — is logged and discarded rather than queued, because a queued verdict would resolve the *next* action instead, executing or cancelling something the user never saw. The practical consequence for a client: a confirmation you send twice is not an error, but it is also not an undo, and the same holds for `elicit_response`.
 
 `summary` is a **user-facing sentence**, resolved server-side in this order: a `summary` the model wrote for this specific call → the tool's configured confirmation prompt with the call's arguments filled in (e.g. `"Open {label}."` → `"Open PDP Analytics."`) → the humanised tool name as a last resort. It is safe to render verbatim; it never contains the model-facing tool description. `parameters` is the raw argument dict, for a "details" disclosure.
 
+#### `settings` — what the action will actually do
+
+Some tools act on values the model never supplies: a publish destination, a folder, a schedule. Those are intentionally kept out of the model's parameter schema, so they appear in neither `parameters` nor `summary` — but the user has to see them before approving. `settings` carries them, resolved server-side into an ordered, render-ready list:
+
+```json
+server → { "type": "action_confirmation",
+           "content": {
+             "tool_name": "KNOWLEDGE_PUBLISH_BUNDLE_QUICK",
+             "summary":   "Publishing 'Getting Started Guide' to the standard destination.",
+             "parameters": { "nodes": [{ "file_id": "b2c4…", "resource_id": "demo_node_200" }], "summary": "…" },
+             "settings": [
+               { "key": "theme_slug", "label": "Theme",       "value": "wi",         "display": "Default"      },
+               { "key": "group",      "label": "User group",  "value": "002",        "display": "Engineering"  },
+               { "key": "path",       "label": "Category",    "value": "New Folder", "display": "Product spec" }
+             ]
+           } }
+```
+
+Render `label` / `display` as the settings summary beside the sentence — `display` is the human-readable form (`"Engineering"`), `value` the identifier the server will execute with (`"002"`). Never render `value`; it is there so a future "tweak settings" flow has something to send back.
+
+Iterate the list as given: the order is authored, the keys vary per tool, and `settings` is `[]` for a tool that declares none — render nothing in that case rather than an empty box. A value the model *did* supply appears here too, overriding the tool's default, so the same renderer serves both a fixed-destination tool and one whose destination the user chose.
+
 Client rules:
 
-- When you receive `action_confirmation`, **pause the input box** and render a confirmation UI with `summary` and `parameters`. Offer **Confirm** and **Cancel** buttons.
+- When you receive `action_confirmation`, **pause the input box** and render a confirmation UI with `summary`, `settings`, and (optionally, behind a disclosure) `parameters`. Offer **Confirm** and **Cancel** buttons.
 - The `tool_name` in your reply MUST match the `tool_name` from the server. Mismatched names produce an `error` frame.
 - The user may close the panel or navigate away while an action is pending. When they reopen, send `action_cancel` — the server will clean up. If the connection dropped, the pending-action state is lost (it lives on the WebSocket handler instance) and reconnecting starts fresh.
 - Multiple confirmations can stack up in one turn (the model asked to do several things). The server pauses on each one in order; your UI should treat them one at a time.
@@ -1046,12 +1139,30 @@ ws.onmessage = (ev) => {
     case "tool_result":
       clearToolIndicator();
       break;
+    case "action_confirmation":
+      // Same tool_name arriving twice is a redelivery of an open gate, not a
+      // second request — replace the dialog rather than stacking another.
+      showConfirmationDialog(frame.content);
+      break;
+    case "action_result":
+      if (frame.content.status === "running") {
+        dismissConfirmationDialog(frame.content.tool_name);
+        renderActionPending(frame.content); // the 10s a publish takes
+      } else {
+        renderActionOutcome(frame.content); // ok / error / cancelled
+      }
+      break;
     case "final":
+      // THE turn terminator — success and failure alike. Release the composer
+      // here and only here. Empty content is a bare terminator: keep the deltas.
       streamingText = "";
-      finalizeAssistantMessage(frame.content); // prose text
+      if (frame.content) finalizeAssistantMessage(frame.content); // prose text
       renderAttachments(frame.attachments ?? []); // charts delivered out-of-band
+      setTurnInProgress(false);
       break;
     case "error":
+      // Explains a failure; never ends the turn. `final` always follows, so do
+      // not release the composer here.
       renderError(frame.content);
       break;
   }
@@ -1335,16 +1446,19 @@ All outbound frames are JSON — there are no raw binary frames. Audio is delive
 | `input_transcript`   | `content: "<text>"`                                       | What the user said, or the echo of a message they typed. Speech-to-text is available because `input_audio_transcription` is enabled by default. |
 | `tool_call`          | `content: { name, args }`                                 | The model invoked a function **during voice**. Same shape as text mode.                           |
 | `tool_result`        | `content: { name, result }`                               | The function returned (summarised). Same shape as text mode.                                      |
+| `action_result`      | `content: { tool_name, status, result?, error?, latency_ms? }` | A side-effecting tool ran during voice. `running` when it starts, then `ok` / `error`. Same shape as text mode minus `cancelled` — there is no confirmation gate in voice to decline. |
 | `navigate`           | `content: { target, params }`                             | A navigate action fired during voice — route the user exactly as in text mode.                    |
 | `text_diff`          | `content: { file_id, from_version, to_version, origin, diff, old_value, new_value }` | A document edit committed during voice. Rare (voice agents seldom carry document tools) but dispatched identically. |
 | `document_resync`    | `content: { file_id, version, filename, mime_type, text }` | Same triggers as text mode.                                                                       |
 | `interrupted`        | _(none)_                                                  | The model was cut off mid-response (the user barged in). **Stop playback and flush buffered audio immediately** — any attachments staged for the turn are discarded too. |
 | `final`              | `content: ""`, `attachments: [ … ]`                       | Emitted **only when the turn produced attachments** (e.g. a chart or Malloy dashboard), just before `turn_complete`. `content` is always an empty string in live mode — the spoken answer is the audio. |
-| `turn_complete`      | _(none)_                                                  | The model has finished speaking for this turn.                                                    |
-| `error`              | `content: "<message>"`                                    | An error occurred in the Live session.                                                            |
+| `turn_complete`      | _(none)_                                                  | **Turn terminator** — the model has finished speaking for this turn. Emitted after a normal turn and after one killed by an error, so a turn is never left open. This is live mode's `final`. |
+| `error`              | `content: "<message>"`                                    | An error occurred in the Live session. Explains a failure; the `turn_complete` that closes an interrupted turn follows it. |
 | `mode_changed`       | `content: { "mode": "live" \| "standard" }`               | Confirms the mode switch (sent at entry and exit).                                                |
 
-**Live mode is tool-capable.** Agents can call tools while speaking, so `tool_call` / `tool_result` frames — and a `final` carrying attachments — do occur in voice mode. Any client event a tool declares (`navigate`, `text_diff`, `document_resync`) is dispatched here too, through the same path as text mode.
+**Live mode is tool-capable.** Agents can call tools while speaking, so `tool_call` / `tool_result` frames — and a `final` carrying attachments — do occur in voice mode. Any client event a tool declares (`navigate`, `text_diff`, `document_resync`) is dispatched here too, through the same path as text mode. A side-effecting tool also emits `action_result`, for the same reason it does in text mode: the pause while a publish runs is just as long mid-call, and just as unexplained without it.
+
+A tool that fails or times out fails only its own call — the model receives the error, speaks to it, and the session continues.
 
 What does *not* occur is `delta` (the answer is audio, not streamed text), `action_confirmation`, `clarification`, and `agent_switched`:
 
@@ -1396,7 +1510,7 @@ server → { "type": "final",  "content": "…", "attachments": [] }
 
 ### 9.5. Transcript persistence and history continuity
 
-`output_transcript` and `input_transcript` turns — including messages typed in live mode, which are logged as user transcripts — are persisted to `bi_with_ai_chat_message` with `content_type = 'transcript'`. When the session returns to standard mode, the server rehydrates the conversation provider with those transcript rows so the model can reference the voice exchange in subsequent text turns. History continuity is automatic — no client action is needed.
+`output_transcript` and `input_transcript` turns — including messages typed in live mode, which are logged as user transcripts — are persisted to `bi_with_ai_chat_message` with `content_type = 'transcript'` **and** appended to the session's shared transcript as they happen, exactly like typed turns. Voice and text therefore interleave in one ordered conversation: an agent switched to mid-live-run inherits what was just said, and when the session returns to standard mode the model can reference the voice exchange in subsequent text turns. History continuity is automatic — no client action is needed.
 
 Transcripts also come back to the **client** on reconnect: the `history` frame replays them as ordinary `role: "user"` / `role: "model"` entries, indistinguishable from typed turns. A resumed transcript therefore shows the spoken exchange inline with the text conversation. If you want to badge voice turns differently, you'd have to track them yourself while live — the replay carries no marker. A model turn cut off by a barge-in is stored with a trailing `[interrupted]` line.
 
@@ -1447,7 +1561,7 @@ Recommended client reconnect strategy:
 ### Outbound frame cheatsheet — `/chat/` (text mode)
 
 ```
-session             { session_id, account, email, agent_id, model_id, status, created_at, modified_at }
+session             { session_id, account, email, agent_id, model_id, title, status, created_at, modified_at }   # title null until the model names it
 history             { agent_id, data: [{role, text, agent_id, attachments?} | {role:"edit", origin, file_id, from_version, to_version, diff}] }
 delta               "<chunk>"
 image               { mime_type, data (base64) }
@@ -1455,15 +1569,18 @@ executable_code     { code, language }
 code_execution_result { output, outcome }
 tool_call           { name, args }
 tool_result         { name, result }
-action_confirmation { tool_name, summary, parameters }
+action_confirmation { tool_name, summary, parameters, settings: [{key, label, value, display}] }   # render label/display; a repeat for the same tool_name is a redelivery
+action_result       { tool_name, status: running|ok|error|cancelled, result?, error?, reason?, latency_ms? }   # the response to action_confirmation; `running` = show a spinner
 clarification       { tool_name, questions: [{question, options: [{label, description?}], multi_select}] }   # ASK_USER — reply with elicit_response
 agent_switched      { from_agent_id, to_agent_id, agent_name }   # user handed the turn to another agent
+session_named       { session_id, title }   # once, after the first turn — relabel the thread
 navigate            { target, params }
 text_diff           { file_id, from_version, to_version, origin: "agent", diff, old_value, new_value }   # already committed — apply, never echo back
 document_resync     { file_id, version, filename, mime_type, text: "<full body>" }   # failed patch, or a re-opened document
 context_ack         <context echoed back, or null>
 final               content: "<full text>",  attachments: [{attachment record + url}, …]   # kind ∈ plotly|malloy|editable|image|file
-error               "<message>"
+                                                # THE turn terminator — one per turn, success or failure. content:"" = bare terminator, keep the deltas
+error               "<message>"                 # explains a failure; NEVER ends the turn — `final` always follows
 ```
 
 ### Outbound frame cheatsheet — `/chat/` (live mode)
@@ -1475,13 +1592,14 @@ output_transcript   content: "<model text>",  is_delta: <bool>    # is_delta=fal
 input_transcript    "<user speech>"                 # user speech-to-text, or the echo of a typed message
 tool_call           { name, args }                  # live mode IS tool-capable (no confirmation gate)
 tool_result         { name, result }
+action_result       { tool_name, status: running|ok|error, result?, error?, latency_ms? }   # side-effecting tool; no `cancelled` — nothing to decline
 navigate            { target, params }              # tool-declared client events fire in voice too
 text_diff           { file_id, from_version, to_version, origin, diff, old_value, new_value }
 document_resync     { file_id, version, filename, mime_type, text }
 interrupted         (no content field)              # barge-in — stop playback, flush buffers
 final               content: "",  attachments: [...]  # only when the turn produced attachments
-turn_complete       (no content field)
-error               "<message>"
+turn_complete       (no content field)               # turn terminator — after a normal turn AND after one an error killed
+error               "<message>"                       # explains a failure; turn_complete still closes the turn
 ```
 
 ### Inbound frame cheatsheet — `/chat/` (text mode)
@@ -1493,7 +1611,7 @@ error               "<message>"
 { text: "…", agent_id: "…" }                                        # user prompt directed at a chosen agent (shared session; sticky)
 { context: {...} }                                                   # module awareness (Concierge)
 { type: "action_confirm", tool_name: "…" }                          # approve pending action
-{ type: "action_cancel",  tool_name: "…" }                          # decline pending action
+{ type: "action_cancel",  tool_name: "…", reason?: "…" }            # decline pending action; `reason` is model-facing prose — send it when the dismissal isn't a refusal
 { type: "elicit_response", tool_name: "…", answers: [["<label>", …], …] }  # answer a clarification; answers[i] ↔ questions[i] (empty = dismissed)
 { type: "document_edit", content: { file_id, diff, [origin: "user"] } }  # commit a MANUAL change (git diff); agent edits are already committed server-side
 { type: "start_live" }                                              # enter live (voice) mode

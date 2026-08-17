@@ -262,7 +262,7 @@ class _SessionTile extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        session.preview ?? session.sessionId,
+                        session.displayLabel ?? session.sessionId,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
@@ -333,7 +333,7 @@ class _SessionTile extends StatelessWidget {
                       builder: (ctx) => AlertDialog(
                         title: const Text('Delete session?'),
                         content: Text(
-                          session.preview ?? session.sessionId,
+                          session.displayLabel ?? session.sessionId,
                           maxLines: 2,
                           overflow: TextOverflow.ellipsis,
                           style: const TextStyle(

@@ -32,11 +32,10 @@ class MalloyDashboard {
   /// dimensions, and a `List<Map>` for a nested view.
   final List<Map<String, dynamic>> rows;
 
-  /// The compiled SQL behind [query], when the server ships it.
-  ///
-  /// This is **not** part of the documented `malloy.dashboard.v1` contract, so
-  /// it is looked up across the field names the compiler is known to emit and
-  /// is `null` when absent — the SQL tab falls back to the Malloy source.
+  /// The compiled SQL behind [query] (consumer guide §5.4: `compiled_sql` is
+  /// documented on both the envelope and its `tool_result`). Looked up across
+  /// a few known field names as a compiler-version safety net, and `null`
+  /// when absent — the SQL tab falls back to the Malloy source in that case.
   final String? compiledSql;
 
   const MalloyDashboard({
