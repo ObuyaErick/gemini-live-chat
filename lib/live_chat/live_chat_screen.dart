@@ -231,6 +231,8 @@ class _LiveChatState extends State<LiveChat> {
               action: _provider.pendingAction!,
               onConfirm: _provider.confirmAction,
               onCancel: _provider.cancelAction,
+              onAmend: (instruction) =>
+                  _provider.amendAction(instruction: instruction),
             ),
           ),
         if (_provider.runningAction != null)

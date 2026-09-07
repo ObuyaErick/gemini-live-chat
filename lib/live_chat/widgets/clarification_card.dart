@@ -3,13 +3,15 @@ import 'package:webs/live_chat/models.dart';
 import 'package:webs/ui/core/app_theme.dart';
 
 /// Card shown when the server parks a turn on a `clarification` frame
-/// (`ASK_USER` tool). The user picks answers to each batched question and
-/// submits them together as a single `elicit_response`.
+/// (`ASK_USER` tool). The user picks answers to each batched question — or
+/// describes their own in the per-question "Other" field; every question
+/// accepts free text — and submits them together as a single `elicit_response`.
 class ClarificationCard extends StatefulWidget {
   final PendingClarification clarification;
 
-  /// Called with positional answers: answers[i] = chosen labels for questions[i].
-  /// An empty inner list means the question was dismissed.
+  /// Called with positional answers: answers[i] = chosen labels and/or the
+  /// user's own words for questions[i] (the server partitions them by label
+  /// match). An empty inner list means the question was dismissed.
   final void Function(List<List<String>> answers) onSubmit;
 
   const ClarificationCard({
@@ -24,14 +26,24 @@ class ClarificationCard extends StatefulWidget {
 
 class _ClarificationCardState extends State<ClarificationCard> {
   late final List<Set<String>> _selections;
+  late final List<TextEditingController> _customControllers;
+  late final List<bool> _customOpen;
 
   @override
   void initState() {
     super.initState();
-    _selections = List.generate(
-      widget.clarification.questions.length,
-      (_) => {},
-    );
+    final count = widget.clarification.questions.length;
+    _selections = List.generate(count, (_) => {});
+    _customControllers = List.generate(count, (_) => TextEditingController());
+    _customOpen = List.filled(count, false);
+  }
+
+  @override
+  void dispose() {
+    for (final c in _customControllers) {
+      c.dispose();
+    }
+    super.dispose();
   }
 
   void _toggle(int qIndex, String label, bool multiSelect) {
@@ -47,13 +59,35 @@ class _ClarificationCardState extends State<ClarificationCard> {
           _selections[qIndex].clear();
         } else {
           _selections[qIndex] = {label};
+          // Single-select means one answer total — picking a label
+          // supersedes whatever was typed.
+          _customControllers[qIndex].clear();
+          _customOpen[qIndex] = false;
         }
       }
     });
   }
 
+  void _toggleCustom(int qIndex, bool multiSelect) {
+    setState(() {
+      _customOpen[qIndex] = !_customOpen[qIndex];
+      if (!_customOpen[qIndex]) {
+        _customControllers[qIndex].clear();
+      } else if (!multiSelect) {
+        // Symmetric with _toggle: describing your own answer supersedes a pick.
+        _selections[qIndex].clear();
+      }
+    });
+  }
+
   void _submit() {
-    final answers = _selections.map((s) => s.toList()).toList();
+    final answers = <List<String>>[];
+    for (int i = 0; i < _selections.length; i++) {
+      final answer = _selections[i].toList();
+      final custom = _customControllers[i].text.trim();
+      if (custom.isNotEmpty) answer.add(custom);
+      answers.add(answer);
+    }
     widget.onSubmit(answers);
   }
 
@@ -93,6 +127,17 @@ class _ClarificationCardState extends State<ClarificationCard> {
               question: questions[i],
               selections: _selections[i],
               onToggle: (label) => _toggle(i, label, questions[i].multiSelect),
+              customOpen: _customOpen[i],
+              customController: _customControllers[i],
+              onToggleCustom: () => _toggleCustom(i, questions[i].multiSelect),
+              onCustomChanged: questions[i].multiSelect
+                  ? null
+                  : (text) {
+                      // One answer total: typing supersedes a picked label.
+                      if (text.trim().isNotEmpty && _selections[i].isNotEmpty) {
+                        setState(() => _selections[i].clear());
+                      }
+                    },
             ),
           ],
           const SizedBox(height: 18),
@@ -126,11 +171,19 @@ class _QuestionBlock extends StatelessWidget {
   final ClarificationQuestion question;
   final Set<String> selections;
   final void Function(String label) onToggle;
+  final bool customOpen;
+  final TextEditingController customController;
+  final VoidCallback onToggleCustom;
+  final void Function(String text)? onCustomChanged;
 
   const _QuestionBlock({
     required this.question,
     required this.selections,
     required this.onToggle,
+    required this.customOpen,
+    required this.customController,
+    required this.onToggleCustom,
+    this.onCustomChanged,
   });
 
   @override
@@ -158,7 +211,7 @@ class _QuestionBlock extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 10),
-        if (question.multiSelect)
+        if (question.multiSelect) ...[
           Column(
             children: [
               for (final opt in question.options)
@@ -168,8 +221,9 @@ class _QuestionBlock extends StatelessWidget {
                   onTap: () => onToggle(opt.label),
                 ),
             ],
-          )
-        else
+          ),
+          _OtherToggleRow(open: customOpen, onTap: onToggleCustom),
+        ] else
           Wrap(
             spacing: 8,
             runSpacing: 8,
@@ -180,9 +234,82 @@ class _QuestionBlock extends StatelessWidget {
                   selected: selections.contains(opt.label),
                   onTap: () => onToggle(opt.label),
                 ),
+              _PillOption(
+                label: 'Other…',
+                selected: customOpen,
+                onTap: onToggleCustom,
+              ),
             ],
           ),
+        if (customOpen)
+          Padding(
+            padding: const EdgeInsets.only(top: 8),
+            child: TextField(
+              controller: customController,
+              autofocus: true,
+              onChanged: onCustomChanged,
+              style: TextStyle(fontSize: 12.5, color: t.text1),
+              decoration: InputDecoration(
+                hintText: 'Describe it in your own words…',
+                hintStyle: TextStyle(fontSize: 12.5, color: t.text3),
+                isDense: true,
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 11,
+                  vertical: 10,
+                ),
+                filled: true,
+                fillColor: t.bg2,
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(9),
+                  borderSide: BorderSide(color: t.border),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(9),
+                  borderSide: BorderSide(color: t.accent),
+                ),
+              ),
+            ),
+          ),
       ],
+    );
+  }
+}
+
+/// The multi-select variant of the "Other" affordance — a quiet row beneath
+/// the checkboxes, matching their layout language.
+class _OtherToggleRow extends StatelessWidget {
+  final bool open;
+  final VoidCallback onTap;
+
+  const _OtherToggleRow({required this.open, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.tokens;
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(9),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 8),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                open ? Icons.close_rounded : Icons.edit_outlined,
+                size: 13,
+                color: t.text3,
+              ),
+              const SizedBox(width: 8),
+              Text(
+                open ? 'Remove my own answer' : 'Add my own answer…',
+                style: TextStyle(fontSize: 12, color: t.text2),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }

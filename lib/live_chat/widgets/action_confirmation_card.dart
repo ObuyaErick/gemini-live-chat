@@ -4,22 +4,50 @@ import 'package:webs/ui/core/app_theme.dart';
 
 /// Shown when the agent parks a turn awaiting confirmation for a consequential
 /// action. Warning-toned, with a left accent rail — clearly a "stop and
-/// decide" affordance distinct from normal chat.
-class ActionConfirmationCard extends StatelessWidget {
+/// decide" affordance distinct from normal chat. Offers three verdicts:
+/// confirm, cancel, and amend ("adjust this before running it"), the last of
+/// which expands an optional free-text field for what should change.
+class ActionConfirmationCard extends StatefulWidget {
   final PendingAction action;
   final VoidCallback onConfirm;
   final VoidCallback onCancel;
+
+  /// Send an `action_amend` verdict. A null [instruction] is a bare amend —
+  /// the model asks what to change.
+  final void Function(String? instruction) onAmend;
 
   const ActionConfirmationCard({
     super.key,
     required this.action,
     required this.onConfirm,
     required this.onCancel,
+    required this.onAmend,
   });
+
+  @override
+  State<ActionConfirmationCard> createState() => _ActionConfirmationCardState();
+}
+
+class _ActionConfirmationCardState extends State<ActionConfirmationCard> {
+  final TextEditingController _amendController = TextEditingController();
+  bool _amendOpen = false;
+
+  @override
+  void dispose() {
+    _amendController.dispose();
+    super.dispose();
+  }
+
+  // An empty submit is a valid bare amend — the model asks what to change.
+  void _submitAmend() {
+    final text = _amendController.text.trim();
+    widget.onAmend(text.isEmpty ? null : text);
+  }
 
   @override
   Widget build(BuildContext context) {
     final t = context.tokens;
+    final action = widget.action;
     return Container(
       width: double.infinity,
       decoration: BoxDecoration(
@@ -185,7 +213,7 @@ class ActionConfirmationCard extends StatelessWidget {
                           children: [
                             Expanded(
                               child: OutlinedButton(
-                                onPressed: onCancel,
+                                onPressed: widget.onCancel,
                                 style: OutlinedButton.styleFrom(
                                   foregroundColor: t.text2,
                                   side: BorderSide(color: t.borderStrong),
@@ -200,9 +228,36 @@ class ActionConfirmationCard extends StatelessWidget {
                               ),
                             ),
                             const SizedBox(width: 8),
+                            // Third verdict: adjust instead of run/drop. With
+                            // server-resolved settings on show, the natural
+                            // ask is tweaking them; otherwise it is a general
+                            // "not like this" escape hatch.
+                            Expanded(
+                              child: OutlinedButton.icon(
+                                onPressed: () =>
+                                    setState(() => _amendOpen = !_amendOpen),
+                                icon: const Icon(Icons.tune_rounded, size: 16),
+                                label: Text(
+                                  action.settings.isNotEmpty
+                                      ? 'Tweak settings'
+                                      : 'Do it differently',
+                                ),
+                                style: OutlinedButton.styleFrom(
+                                  foregroundColor: t.accent,
+                                  side: BorderSide(color: t.borderStrong),
+                                  padding: const EdgeInsets.symmetric(
+                                    vertical: 11,
+                                  ),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(9),
+                                  ),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
                             Expanded(
                               child: FilledButton.icon(
-                                onPressed: onConfirm,
+                                onPressed: widget.onConfirm,
                                 icon: const Icon(Icons.check_rounded, size: 16),
                                 label: const Text('Confirm'),
                                 style: FilledButton.styleFrom(
@@ -220,6 +275,51 @@ class ActionConfirmationCard extends StatelessWidget {
                             ),
                           ],
                         ),
+                        if (_amendOpen) ...[
+                          const SizedBox(height: 10),
+                          Container(
+                            padding: const EdgeInsets.only(left: 12, right: 4),
+                            decoration: BoxDecoration(
+                              color: t.bg2,
+                              borderRadius: BorderRadius.circular(9),
+                              border: Border.all(color: t.borderStrong),
+                            ),
+                            child: Row(
+                              children: [
+                                Expanded(
+                                  child: TextField(
+                                    controller: _amendController,
+                                    autofocus: true,
+                                    style: TextStyle(
+                                      fontSize: 12.5,
+                                      color: t.text1,
+                                    ),
+                                    decoration: InputDecoration(
+                                      isDense: true,
+                                      border: InputBorder.none,
+                                      hintText:
+                                          'What should change? (optional)',
+                                      hintStyle: TextStyle(
+                                        fontSize: 12,
+                                        color: t.text3,
+                                      ),
+                                    ),
+                                    onSubmitted: (_) => _submitAmend(),
+                                  ),
+                                ),
+                                IconButton(
+                                  onPressed: _submitAmend,
+                                  tooltip: 'Send',
+                                  icon: Icon(
+                                    Icons.send_rounded,
+                                    size: 16,
+                                    color: t.accent,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
                       ],
                     ),
                   ),

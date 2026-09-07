@@ -1,6 +1,6 @@
-/// A Tier-3 action awaiting the user's confirm/cancel decision. While set, the
-/// server has parked the turn until we reply with `action_confirm` or
-/// `action_cancel`.
+/// A Tier-3 action awaiting the user's verdict. While set, the server has
+/// parked the turn until we reply with `action_confirm`, `action_cancel`, or
+/// `action_amend` (adjust it — nothing runs, the model re-proposes).
 class PendingAction {
   final String toolName;
   final String summary;
@@ -54,8 +54,11 @@ class ActionSetting {
 /// Lifecycle of a confirmed action, driven by `action_result` frames: the
 /// server acks the confirmation with `running` (a real action — a publish, a
 /// bulk write — routinely takes ten seconds or more), then reports a terminal
-/// `ok` / `error` / `cancelled`.
-enum ActionRunStatus { running, ok, error, cancelled }
+/// `ok` / `error` / `cancelled`. An `action_amend` verdict skips `running`
+/// entirely: nothing executes, and the terminal `amended` (with the user's
+/// request in `reason`) closes the dialog while the turn keeps going —
+/// typically toward a fresh confirmation with adjusted settings.
+enum ActionRunStatus { running, ok, error, cancelled, amended }
 
 /// The `action_result` payload — the response half of `action_confirmation`,
 /// keyed by [toolName] the same way `tool_call`/`tool_result` pair up.
@@ -85,6 +88,7 @@ class ActionRun {
         'running' => ActionRunStatus.running,
         'error' => ActionRunStatus.error,
         'cancelled' => ActionRunStatus.cancelled,
+        'amended' => ActionRunStatus.amended,
         _ => ActionRunStatus.ok,
       },
       summary: json['summary'] as String?,

@@ -110,8 +110,9 @@ class _AuthScreenState extends State<AuthScreen> {
                           style: const TextStyle(fontSize: 14),
                           decoration: _fieldDecoration(hint: 'you@company.com'),
                           validator: (v) {
-                            if (v == null || v.trim().isEmpty)
+                            if (v == null || v.trim().isEmpty) {
                               return 'Required';
+                            }
                             if (!RegExp(
                               r'^[^@\s]+@[^@\s]+\.[^@\s]+$',
                             ).hasMatch(v.trim())) {

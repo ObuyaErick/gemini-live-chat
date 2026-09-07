@@ -9,8 +9,10 @@ import 'live_chat_fakes.dart';
 /// after `action_result` landed: settings are the render surface of a
 /// confirmation, a repeated gate frame is a redelivery, `action_result`
 /// carries the running→outcome lifecycle, `action_cancel` relays a
-/// model-facing reason, an `error` frame never ends a turn (`final` is the
-/// sole terminator), and `session_named` retitles the thread.
+/// model-facing reason, `action_amend` closes the dialog without executing
+/// while the turn continues toward a re-proposal, an `error` frame never ends
+/// a turn (`final` is the sole terminator), and `session_named` retitles the
+/// thread.
 class FakeReadAloud extends ReadAloudService {
   @override
   Future<void> speak(String text) async {}
@@ -139,6 +141,50 @@ void main() {
       final frame = socket.sent.last;
       expect(frame['type'], 'action_cancel');
       expect(frame.containsKey('reason'), isFalse);
+    });
+  });
+
+  group('action_amend', () {
+    test('relays the user instruction and dismisses the dialog', () {
+      socket.emit(confirmationFrame());
+      provider.amendAction(instruction: 'Publish to the Sales group instead.');
+      expect(provider.pendingAction, isNull);
+      final frame = socket.sent.last;
+      expect(frame['type'], 'action_amend');
+      expect(frame['tool_name'], 'KNOWLEDGE_PUBLISH_BUNDLE_QUICK');
+      expect(frame['instruction'], contains('Sales'));
+    });
+
+    test('a bare amend omits instruction (the model asks what to change)', () {
+      socket.emit(confirmationFrame());
+      provider.amendAction();
+      final frame = socket.sent.last;
+      expect(frame['type'], 'action_amend');
+      expect(frame.containsKey('instruction'), isFalse);
+    });
+
+    test('amended is terminal for the dialog but not the turn', () {
+      provider.sendMessage('publish this');
+      socket.emit(confirmationFrame());
+      provider.amendAction(instruction: 'Different group.');
+
+      // Nothing executed — the server acks with a terminal `amended`, never
+      // a `running` phase, and the turn keeps going toward a re-proposal.
+      socket.emit({
+        'type': 'action_result',
+        'content': {
+          'tool_name': 'KNOWLEDGE_PUBLISH_BUNDLE_QUICK',
+          'status': 'amended',
+          'reason': 'Different group.',
+        },
+      });
+      expect(provider.runningAction, isNull);
+      expect(provider.pendingAction, isNull);
+      expect(provider.isWaitingForResponse, isTrue); // only `final` releases
+
+      // The adjusted gate arrives as a fresh confirmation.
+      socket.emit(confirmationFrame(settings: []));
+      expect(provider.pendingAction, isNotNull);
     });
   });
 

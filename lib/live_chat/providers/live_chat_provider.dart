@@ -495,6 +495,25 @@ class LiveChatProvider extends ChangeNotifier {
   void cancelAction({String? reason}) =>
       _sendActionDecision(confirmed: false, reason: reason);
 
+  /// Ask for the pending action to be adjusted rather than run or dropped.
+  /// Nothing executes: the server closes this dialog with a terminal
+  /// `amended` result and the turn continues — typically a clarification,
+  /// then a fresh confirmation with adjusted settings. [instruction] is the
+  /// user's own words for what should change; a bare amend is valid — the
+  /// model asks what to change.
+  void amendAction({String? instruction}) {
+    final pending = _pendingAction;
+    if (pending == null || !_isConnected) return;
+    _pendingAction = null;
+    notifyListeners();
+    _socket.send({
+      'type': 'action_amend',
+      'tool_name': pending.toolName,
+      if (instruction != null && instruction.trim().isNotEmpty)
+        'instruction': instruction.trim(),
+    });
+  }
+
   void _sendActionDecision({required bool confirmed, String? reason}) {
     final pending = _pendingAction;
     if (pending == null || !_isConnected) return;
@@ -835,6 +854,21 @@ class LiveChatProvider extends ChangeNotifier {
                   run.error ?? 'Action failed',
                   duration: const Duration(seconds: 6),
                   severity: SnackSeverity.error,
+                ),
+              );
+            case ActionRunStatus.amended:
+              // Neither a completion nor a cancellation: the gate closed so
+              // the model can re-propose, and the turn is still running —
+              // only `final` releases the composer.
+              if (_pendingAction?.toolName == run.toolName) {
+                _pendingAction = null;
+              }
+              _emit(
+                ShowSnackBar(
+                  run.reason == null
+                      ? 'Adjusting the action'
+                      : 'Adjusting: ${run.reason}',
+                  severity: SnackSeverity.info,
                 ),
               );
             case ActionRunStatus.cancelled:
